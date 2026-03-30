@@ -1,0 +1,7 @@
+O ALFINETE (Aprendizado Lógico Filtrado por Instinto para Nivelamento Estratégico e Treinamento Eficiente) consiste em um algoritmo híbrido que integra modelagem heurística baseada em roteiros (scripts) e métodos de aprendizado por reforço. O objetivo central do sistema é o desenvolvimento de um agente inteligente dotado de dificuldade adaptável.
+
+A arquitetura do projeto está dividida nos seguintes módulos principais:
+
+/Q-learning: Contém a implementação e as demonstrações de um agente cujo treinamento para o ambiente Pokémon Showdown fundamenta-se exclusivamente no aprendizado por reforço. Nesta abordagem, o modelo opera apenas com as regras básicas de funcionamento do jogo, desenvolvendo suas estratégias de forma autônoma a partir da interação direta com o ambiente de simulação.
+
+/Instinto: Abriga a versão do agente estruturada sobre uma base de conhecimento empírico predefinida. Utiliza um conjunto de heurísticas e scripts focados nas mecânicas do jogo (o "instinto"), fornecendo ao agente informações essenciais e capacidade de formulação de estratégias imediatas. Subsequentemente, o aprendizado por reforço é aplicado para refinar e aprimorar esse conhecimento base, o que reduz substancialmente o tempo e o custo computacional necessários para o treinamento.
