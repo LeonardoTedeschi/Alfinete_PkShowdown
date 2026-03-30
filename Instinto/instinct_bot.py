@@ -14,10 +14,10 @@ class MatchupState(Enum):
     DOMINANT = 1       # Eu SE / Ele NVE
     VOLATILE = 2       # Eu SE / Ele SE
     OFFENSIVE_ADV = 3  # Eu SE / Ele Neutro
-    DEFENSIVE_ADV = 4  # Eu Neutro / Ele NVE (NOVO)
+    DEFENSIVE_ADV = 4  # Eu Neutro / Ele NVE
     DEFENSIVE_DIS = 5  # Eu Neutro / Ele SE
-    OFFENSIVE_DIS = 6  # Eu NVE / Ele Neutro (NOVO)
-    STALEMATE = 7      # Eu NVE / Ele NVE (NOVO)
+    OFFENSIVE_DIS = 6  # Eu NVE / Ele Neutro 
+    STALEMATE = 7      # Eu NVE / Ele NVE 
     NEUTRAL = 8        # Neutro / Neutro
     CRITICAL_DIS = 9   # Eu NVE / Ele SE
 
@@ -29,10 +29,10 @@ class MoveCategory(Enum):
     HAZARD = 5
     RECOVERY = 6
     WEATHER = 7
-    TEAM_CURE = 8      # Heal Bell, Aromatherapy
-    PROTECT = 9        # Protect, Detect
-    DEBUFF = 10        # Snarl, Charm, etc
-    STAT_CLEAN = 11    # Haze, Clear Smog
+    TEAM_CURE = 8      
+    PROTECT = 9        
+    DEBUFF = 10        
+    STAT_CLEAN = 11
     UNKNOWN = 12
 
 # --- 2. O CÉREBRO DO BOT ---
@@ -573,7 +573,7 @@ class InstinctBot(Player):
                      if move.id in ['defog', 'rapidspin'] and battle.side_conditions: return self.create_order(move)
                      if move.id in ['haze', 'clearsmog'] and any(v > 0 for v in opponent.boosts.values()): return self.create_order(move)
 
-            # 5. ATTACK (NOVO: LETHAL CHECK)
+            # 5. ATTACK
             if action == "ATTACK":
                 valid_moves = [m for m in battle.available_moves if m.base_power > 0 and not self._is_move_useless(m, opponent)]
                 if valid_moves:
@@ -582,6 +582,7 @@ class InstinctBot(Player):
                     for m in valid_moves:
                         stab = 1.5 if m.type in active.types else 1.0
                         power = m.base_power * stab * opponent.damage_multiplier(m)
+                        
                         # Se o oponente tem pouco HP e o golpe é forte
                         if opponent.current_hp_fraction < 0.35 and power > 60:
                             lethal_moves.append(m)
@@ -590,8 +591,9 @@ class InstinctBot(Player):
                         # Prioriza o mais preciso para finalizar
                         best = max(lethal_moves, key=lambda m: m.accuracy if m.accuracy != True else 100)
                     else:
-                        # Dano bruto máximo
-                        best = max(valid_moves, key=lambda m: m.base_power * opponent.damage_multiplier(m))
+                        # Dano bruto máximo: BasePower * STAB * Vantagem de Tipo
+                        best = max(valid_moves, key=lambda m: m.base_power * (1.5 if m.type in active.types else 1.0) * opponent.damage_multiplier(m))
+                        
                     return self.create_order(best)
 
             # 6. PROTECT
