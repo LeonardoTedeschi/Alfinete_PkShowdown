@@ -2,12 +2,19 @@ import subprocess
 import time
 import sys
 import shutil
+import os
 from datetime import datetime
 
+current_dir = os.path.dirname(os.path.abspath(__file__))
+root_dir = os.path.abspath(os.path.join(current_dir, '..', '..'))
+
 # CONFIGURAÇÃO
-SCRIPT_DO_BOT = "bot_agent.py"
+SCRIPT_DO_BOT = os.path.join(current_dir, "train_vs_instinct.py")
 QUANTIDADE_DE_SESSOES = 10    # Ex: 10 sessões de 10k = 100k batalhas
-TEMPO_LIMITE_MINUTOS = 45      # Se demorar mais que isso, mata e reinicia (Anti-Travamento)
+TEMPO_LIMITE_MINUTOS = 45     # Se demorar mais que isso, mata e reinicia (Anti-Travamento)
+
+brain_path = os.path.join(root_dir, "red_brain.pkl")
+backup_path = os.path.join(root_dir, "red_brain_backup.pkl")
 
 def log_msg(msg):
     timestamp = datetime.now().strftime("%H:%M:%S")
@@ -18,11 +25,8 @@ def run_night_cycle():
     
     for i in range(1, QUANTIDADE_DE_SESSOES + 1):
         log_msg(f"--- Iniciando Sessão {i}/{QUANTIDADE_DE_SESSOES} ---")
-        
-        # 1. Backup de Segurança do Cérebro (Antes de começar)
-        # Se acabar a luz ou corromper o arquivo, você tem o backup da sessão anterior
         try:
-            shutil.copy("red_brain.pkl", "red_brain_backup.pkl")
+            shutil.copy(brain_path, backup_path)
         except FileNotFoundError:
             pass # Primeira vez, sem backup
 

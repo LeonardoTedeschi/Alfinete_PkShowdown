@@ -8,16 +8,15 @@ import gc
 
 # --- 1. CONFIGURAÇÃO DE CAMINHOS ---
 current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(current_dir)
-instinct_path = os.path.join(project_root, 'Instinto')
-sys.path.append(instinct_path)
-sys.path.append(current_dir)
+root_dir = os.path.abspath(os.path.join(current_dir, '..', '..'))
+if root_dir not in sys.path:
+    sys.path.append(root_dir)
 
 # --- 2. IMPORTAÇÕES ---
 try:
     from instinct_bot import InstinctBot
     from bot_agent import RED 
-    from teams import RandomTeamFromPool, TEAMS_LIST 
+    from Suporte.teams import RandomTeamFromPool, TEAMS_LIST 
 except ImportError as e:
     print(f"[ERRO] {e}")
     sys.exit(1)

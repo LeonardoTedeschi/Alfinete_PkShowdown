@@ -28,7 +28,7 @@ class Blue_bot(InstinctBot):
         self.previous_my_fainted = 0
         self.previous_opp_fainted = 0
         
-        # AÇÕES POSSÍVEIS (Mapeadas para as categorias base do InstinctBot)
+        # AÇÕES POSSÍVEIS (Mapeadas para as categorias base)
         self.actions = ["ATTACK", "SWITCH", "HEAL", "STATUS", "HAZARD", "BUFF"]
 
         self.load_model("blue_brain.pkl")
@@ -93,7 +93,7 @@ class Blue_bot(InstinctBot):
         )
 
     def _map_to_q_action(self, instinct_action):
-        """Reduz a granularidade do instinto para as ações mapeadas do Q-Learning."""
+        """Reduz a granularidade do instinto para as ações mapeadas da Q-Table."""
         mapping = {
             "HEAL_50": "HEAL",
             "TEAM_CURE": "HEAL",
@@ -113,7 +113,7 @@ class Blue_bot(InstinctBot):
         R_LOSE = -1500.0 
         R_KILL = 300.0   
         R_DEATH = -150.0 
-        R_SWITCH_PENALTY = -10.0
+        R_SWITCH_PENALTY = -20.0
         
         reward = 0
         
@@ -143,7 +143,6 @@ class Blue_bot(InstinctBot):
     # =========================================================================
 
     def choose_move(self, battle):
-        # Tratamento imediato de trocas forçadas (U-turn / Faint)
         switch_forced = False
         if isinstance(battle.force_switch, list): switch_forced = any(battle.force_switch)
         else: switch_forced = bool(battle.force_switch)
@@ -152,7 +151,7 @@ class Blue_bot(InstinctBot):
             return self._choose_switch(battle)
 
         try:
-            # 1. Recupera o estado atual e calcula recompensa anterior
+            # 1. Recupera o estado atual e atualiza a matriz com a recompensa passada
             state = self._get_state(battle)
             reward = self.calculate_reward(battle)
             
@@ -162,7 +161,7 @@ class Blue_bot(InstinctBot):
             if state not in self.q_table:
                 self.q_table[state] = np.zeros(len(self.actions))
 
-            # 2. Avalia qual seria a decisão do Instinto Puro
+            # 2. Pergunta ao Instinto Puro qual a intenção dele
             active = battle.active_pokemon
             opponent = battle.opponent_active_pokemon
             my_role = self._get_role(active)
@@ -181,39 +180,41 @@ class Blue_bot(InstinctBot):
             elif my_role == Role.TANK_BULK:
                 instinct_list = self._matrix_tank_logic(active, opponent, matchup, opp_role)
 
-            # Mapeia a ação primária do instinto para o formato Q-Table
+            # Mapeia a ação do instinto
             primary_instinct = instinct_list[0]
             mapped_instinct = self._map_to_q_action(primary_instinct)
-            
-            if mapped_instinct not in self.actions:
-                mapped_instinct = "ATTACK" # Fallback de segurança
+            if mapped_instinct not in self.actions: mapped_instinct = "ATTACK"
             
             instinct_idx = self.actions.index(mapped_instinct)
 
-            # 3. Lógica de Sobreposição: Verifica o peso histórico do instinto
+            # -----------------------------------------------------------------
+            # 3. LÓGICA DE SOBREPOSIÇÃO: INSTINTO VS CÉREBRO
+            # -----------------------------------------------------------------
             q_value_instinct = self.q_table[state][instinct_idx]
 
             if q_value_instinct >= 0:
-                # O instinto está correto ou neutro: Prioriza o Instinto
+                # O instinto provou ser bom (ou é inédito = 0). USE-O.
                 action_idx = instinct_idx
             else:
-                # O instinto falhou nesta situação antes. Explora nova possibilidade.
+                # O instinto tem saldo NEGATIVO. O cérebro vetou a jogada.
+                # Excluímos a jogada ruim da lista de opções:
                 available_indices = [i for i in range(len(self.actions)) if i != instinct_idx]
                 
+                # JOGADA ALEATÓRIA: Tentando aprender a melhor jogada.
                 if random.random() < self.epsilon:
-                    action_idx = random.choice(available_indices) # Exploração Curiosa
+                    # Exploração: Joga algo completamente aleatório para descobrir
+                    action_idx = random.choice(available_indices)
                 else:
-                    # Maximiza buscando a melhor alternativa fora a intenção do instinto
+                    # Explotação: Usa a alternativa que as jogadas aleatórias passadas 
+                    # já provaram ser a "melhor jogada possível" para substituir o instinto.
                     action_idx = max(available_indices, key=lambda idx: self.q_table[state][idx])
 
-            # 4. Atualiza Memória do Turno
+            # 4. Atualiza Memória e Decai Epsilon
             self.last_state = state
             self.last_action_idx = action_idx
             self.epsilon = max(self.min_epsilon, self.epsilon * self.epsilon_decay)
 
-            # 5. Roteamento de Execução
-            # Envia a ação decidida pela IA de volta para a máquina de execução do Instinto.
-            # Adiciona "ATTACK" e "SWITCH" como fallbacks caso a ação principal não possa ser cumprida.
+            # 5. Roteia a decisão de volta para o motor de execução base
             chosen_action_str = self.actions[action_idx]
             execution_list = [chosen_action_str, "ATTACK", "SWITCH"]
             
@@ -227,6 +228,11 @@ class Blue_bot(InstinctBot):
     # 4. MEMÓRIA E SALVAMENTO
     # =========================================================================
 
+    def _get_root_path(self, filename):
+        """Garante que o cérebro seja salvo sempre na raiz do projeto."""
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        return os.path.join(current_dir, filename)
+
     def update_q_table(self, state, action_idx, reward, next_state):
         if next_state not in self.q_table:
             self.q_table[next_state] = np.zeros(len(self.actions))
@@ -238,20 +244,24 @@ class Blue_bot(InstinctBot):
         self.q_table[state][action_idx] = new_val
 
     def save_model(self, filename="blue_brain.pkl"):
+        filepath = self._get_root_path(filename)
         data = {"q_table": self.q_table, "epsilon": self.epsilon}
         try:
-            with open(filename, "wb") as f: pickle.dump(data, f)
-        except: pass
+            with open(filepath, "wb") as f: pickle.dump(data, f)
+        except Exception as e:
+            print(f"Erro ao salvar: {e}")
 
     def load_model(self, filename="blue_brain.pkl"):
-        if os.path.exists(filename):
+        filepath = self._get_root_path(filename)
+        if os.path.exists(filepath):
             try:
-                with open(filename, "rb") as f:
+                with open(filepath, "rb") as f:
                     data = pickle.load(f)
                     self.q_table = data.get("q_table", {})
                     self.epsilon = data.get("epsilon", self.epsilon)
                 print(f"[BLUE BOT] Cérebro carregado: {len(self.q_table)} estados aprendidos.")
                 return True
-            except: pass
+            except Exception as e:
+                print(f"Erro ao carregar: {e}")
         print("[BLUE BOT] Iniciando aprendizado do zero.")
         return False

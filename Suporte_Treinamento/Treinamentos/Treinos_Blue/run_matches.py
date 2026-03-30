@@ -15,7 +15,7 @@ except ImportError as e:
 
 async def run_battles():
     # --- CONFIGURAÇÕES ---
-    N_BATALHAS = 100
+    N_BATALHAS = 2000
     # O formato deve ser Gen 9 National Dex para aceitar os times do arquivo
     FORMATO = "gen9nationaldex" 
     

@@ -8,7 +8,8 @@ import contextlib
 import warnings
 import gc  # Garbage Collector fundamental
 
-import plot_graph
+# --- IMPORTAÇÕES DA PASTA SUPORTE ---
+import Suporte.plot_graph as plot_graph
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 logging.getLogger("poke-env").setLevel(logging.ERROR)
@@ -16,8 +17,8 @@ logging.getLogger("poke-env").setLevel(logging.ERROR)
 from poke_env import ServerConfiguration
 from poke_env.player import Player
 from brain import RLBrain
-from rivals import MaxDamagePlayer
-from teams import RandomTeamFromPool, TEAMS_LIST 
+from Suporte.rivals import MaxDamagePlayer
+from Suporte.teams import RandomTeamFromPool, TEAMS_LIST
 
 # Configuração Local
 LOCAL_CONFIG = ServerConfiguration("ws://localhost:8000/showdown/websocket", "http://localhost:8000/")
