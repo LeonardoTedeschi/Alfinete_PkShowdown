@@ -9,8 +9,18 @@ import warnings
 
 # --- 1. CONFIGURAÇÃO DE CAMINHOS ---
 current_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Sobe um nível: sai da pasta 'Instinto' e vai para a raiz 'Bot-QV-Pokemon'
+repo_root = os.path.abspath(os.path.join(current_dir, '..'))
+
+# Mapeia a pasta 'Suporte_Treinamento'
+suporte_treinamento_dir = os.path.join(repo_root, 'Suporte_Treinamento')
+
+# Adiciona os caminhos ao sistema para o Python enxergar os arquivos
 if current_dir not in sys.path:
     sys.path.append(current_dir)
+if suporte_treinamento_dir not in sys.path:
+    sys.path.append(suporte_treinamento_dir)
 
 # Silencia avisos e logs poluentes do Poke-env
 warnings.filterwarnings("ignore")
@@ -23,6 +33,8 @@ from poke_env.player import Player
 try:
     from instinct_core import InstinctCore
     from blue_brain import BlueBrain
+    
+    # Agora ele vai procurar a pasta 'Suporte' dentro de 'Suporte_Treinamento'
     from Suporte.teams import RandomTeamFromPool, TEAMS_LIST
     import Suporte.plot_graph as plot_graph
     from Suporte.rivals import MaxDamagePlayer
@@ -31,7 +43,7 @@ except ImportError as e:
     sys.exit(1)
 
 # Configuração Local
-LOCAL_CONFIG = ServerConfiguration("ws://localhost:8000/showdown/websocket", "http://localhost:8000/")
+LOCAL_CONFIG = ServerConfiguration("ws://127.0.0.1:8000/showdown/websocket", "http://127.0.0.1:8000/")
 
 # =============================================================================
 # O AGENTE EXECUTOR (BLUE)
@@ -110,8 +122,8 @@ class BLUE(Player):
 # BLOCO DE EXECUÇÃO (TREINAMENTO STANDALONE)
 # =============================================================================
 async def main():
-    n_battles = 5000    
-    CONCURRENCY = 5
+    n_battles = 2000    
+    CONCURRENCY = 3
     
     team_builder = RandomTeamFromPool(TEAMS_LIST)
     

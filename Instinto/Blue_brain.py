@@ -79,7 +79,6 @@ class BlueBrain:
             self.q_table[self.last_state][self.last_action_idx] = new_val
 
     def decide_action(self, state, instinct_intent):
-        """Avalia a intenção com base no histórico da Q-Table e decide a ação final."""
         if state not in self.q_table:
             self.q_table[state] = np.zeros(len(self.actions))
 
@@ -90,26 +89,30 @@ class BlueBrain:
         instinct_idx = self.actions.index(mapped_intent)
         q_value_instinct = self.q_table[state][instinct_idx]
 
-        # 1. Instinto >= 0 (Prioridade absoluta)
+        # 1. Instinto >= 0: Prioridade Absoluta
         if q_value_instinct >= 0:
             action_idx = instinct_idx
         else:
-            # Filtra todas as outras opções disponíveis
+            # 2. Instinto < 0: Procura alternativas estritamente positivas (> 0)
             available_indices = [i for i in range(len(self.actions)) if i != instinct_idx]
-            
-            # 2. Busca alternativas no mesmo estado que sejam > 0
             positive_options = [i for i in available_indices if self.q_table[state][i] > 0]
             
             if positive_options:
+                # Se houver opções positivas comprovadas, prefere a maior delas
                 action_idx = max(positive_options, key=lambda idx: self.q_table[state][idx])
             else:
-                # 3. Nenhuma alternativa > 0, decisão puramente aleatória
-                action_idx = random.choice(available_indices)
+                # 3. Nenhuma opção > 0 existe.
+                # Usa exploração mínima para tentar descobrir uma jogada boa.
+                # Se não for explorar, reverte forçosamente para o instinto conforme sua regra.
+                if random.random() < self.epsilon:
+                    action_idx = random.choice(available_indices)
+                else:
+                    action_idx = instinct_idx
 
         self.last_state = state
         self.last_action_idx = action_idx
         
-        # Atualiza a taxa de exploração matemática, mesmo que a decisão acima não a utilize mais
+        # Reduz a taxa de exploração gradativamente
         self.epsilon = max(self.min_epsilon, self.epsilon * self.epsilon_decay)
 
         return self.actions[action_idx]
