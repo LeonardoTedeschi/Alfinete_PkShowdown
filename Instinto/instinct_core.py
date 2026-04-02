@@ -236,7 +236,15 @@ class InstinctCore:
             if move_id == 'thunderwave' and ('GROUND' in opp_types or 'ELECTRIC' in opp_types): return True
             if move_id == 'willowisp' and 'FIRE' in opp_types: return True
             if move_id in ['leechseed', 'spore', 'sleeppowder', 'stunspore', 'ragepowder'] and 'GRASS' in opp_types: return True
+            if any(ab in opp_abilities for ab in ['magicbounce']) and move.target in ['normal', 'allAdjacentFoes', 'foeSide']: 
+                return True
             
+            if any(ab in opp_abilities for ab in ['synchronize']):
+                my_types = [str(t).upper() for t in battle.active_pokemon.types if t]
+                if move_id in ['toxic', 'poisongas'] and 'POISON' not in my_types and 'STEEL' not in my_types: return True
+                if move_id == 'willowisp' and 'FIRE' not in my_types: return True
+                if move_id in ['thunderwave', 'stunspore'] and 'ELECTRIC' not in my_types and 'GROUND' not in my_types: return True
+
             if any(ab in opp_abilities for ab in ['immunity']) and move_id in ['toxic', 'poisongas']: return True
             if any(ab in opp_abilities for ab in ['limber']) and move_id == 'thunderwave': return True
             if any(ab in opp_abilities for ab in ['insomnia', 'vitalspirit', 'sweetveil']) and move_id in ['spore', 'hypnosis', 'sleeppowder']: return True
@@ -489,19 +497,35 @@ class InstinctCore:
         except Exception:
             return "/team 123456"
 
-    def get_best_switch(self, battle):
-        """Aplica a matriz de pontos e devolve o Pokemon para troca."""
+    def get_best_switch(self, battle, history=None):
+        """Aplica a matriz de pontos e avalia a troca usando o cenário atual ou histórico do inimigo."""
         opponent = battle.opponent_active_pokemon
         candidates = battle.available_switches
+        if not candidates: return None
         
         weather_abusers = ['swiftswim', 'chlorophyll', 'sandrush', 'slushrush', 'sandforce', 'solarpower', 'hydration', 'raindish', 'icebody']
         active_weather = battle.weather
+
+        # 1. IDENTIFICAÇÃO DE ALVO (Correção: Preservando os Objetos Type Originais)
+        target_types = []
+        if opponent and not opponent.fainted:
+            target_types = [t for t in opponent.types if t]
+        else:
+            alive_opponents = [m for m in battle.opponent_team.values() if not m.fainted]
+            if alive_opponents:
+                for opp in alive_opponents:
+                    target_types.extend([t for t in opp.types if t])
+                target_types = list(set(target_types)) 
+            elif history and history.get('last_opp_species'):
+                last_opp_name = history['last_opp_species']
+                for opp in battle.opponent_team.values():
+                    if opp.species == last_opp_name:
+                        target_types = [t for t in opp.types if t]
+                        break
         
         def get_score(candidate):
             score = 0
             role = self.get_role(candidate)
-            matchup = self.get_matchup_state(candidate, opponent)
-            
             score += candidate.current_hp_fraction * 100
             cand_abi = str(candidate.ability).lower() if candidate.ability else ""
             
@@ -512,20 +536,17 @@ class InstinctCore:
                     if 'sand' in str(active_weather).lower() and cand_abi in ['sandrush', 'sandforce']: score += 1000
                     if ('hail' in str(active_weather).lower() or 'snow' in str(active_weather).lower()) and cand_abi in ['slushrush', 'icebody']: score += 1000
 
-            if matchup == MatchupState.DOMINANT: score += 500
-            elif matchup == MatchupState.OFFENSIVE_ADV: score += 300
-            elif matchup == MatchupState.DEFENSIVE_ADV: score += 100
-            elif matchup == MatchupState.DEFENSIVE_DIS: score -= 200
-            elif matchup == MatchupState.OFFENSIVE_DIS: score -= 300
-            elif matchup == MatchupState.CRITICAL_DIS: score -= 500
-            elif matchup == MatchupState.STALEMATE: score -= 50
-            
+            if target_types:
+                for t_type in target_types:
+                    # Agora t_type é um objeto válido, eliminando o erro de string
+                    mult = candidate.damage_multiplier(t_type)
+                    if mult < 1.0: score += 150
+                    if mult > 1.0: score -= 200
+
             if role == Role.TANK_BULK: score += 50
             return score
 
-        if candidates:
-            return max(candidates, key=get_score)
-        return None
+        return max(candidates, key=get_score)
 
     def get_best_execution_object(self, priority_list, battle):
         """Devolve o objeto exato (Move ou Pokemon) baseado na intenção recebida do Brain."""
@@ -541,26 +562,31 @@ class InstinctCore:
             if action in ["HEAL", "HEAL_50"]:
                 threshold = 0.55 if action == "HEAL_50" else (0.85 if self.is_threatening(active, opponent) else 0.55)
                 if active.current_hp_fraction <= threshold:
-                    move = next((m for m in active.moves.values() if self.classify_move(m) == MoveCategory.RECOVERY), None)
+                    # PROCURA APENAS NOS MOVIMENTOS DISPONÍVEIS (Evita golpes sem PP ou bloqueados por Choice)
+                    move = next((m for m in battle.available_moves if self.classify_move(m) == MoveCategory.RECOVERY), None)
                     if move: return move
 
             if action == "STATUS":
-                moves = [m for m in active.moves.values() if self.classify_move(m) == MoveCategory.STATUS_CTRL]
+                moves = [m for m in battle.available_moves if self.classify_move(m) == MoveCategory.STATUS_CTRL]
                 for m in moves:
                     if not opponent.status and not self.is_move_useless(m, opponent, battle): return m
 
             if action == "HAZARD":
-                move = next((m for m in active.moves.values() if self.classify_move(m) == MoveCategory.HAZARD and m.id not in ['defog', 'rapidspin']), None)
+                move = next((m for m in battle.available_moves if self.classify_move(m) == MoveCategory.HAZARD and m.id not in ['defog', 'rapidspin']), None)
                 if move and not self.is_hazard_already_set(move, battle): return move
 
             if action in ["CLEAN", "STAT_CLEAN"]:
-                 move = next((m for m in active.moves.values() if self.classify_move(m) in [MoveCategory.STAT_CLEAN, MoveCategory.HAZARD] and m.id in ['defog', 'rapidspin', 'haze', 'clearsmog']), None)
+                 move = next((m for m in battle.available_moves if self.classify_move(m) in [MoveCategory.STAT_CLEAN, MoveCategory.HAZARD] and m.id in ['defog', 'rapidspin', 'haze', 'clearsmog']), None)
                  if move:
                      if move.id in ['defog', 'rapidspin'] and battle.side_conditions: return move
                      if move.id in ['haze', 'clearsmog'] and any(v > 0 for v in opponent.boosts.values()): return move
 
             if action == "ATTACK":
+                # Aceita golpes fixos (Seismic Toss, Foul Play) caso os golpes normais acabem
                 valid_moves = [m for m in battle.available_moves if m.base_power > 0 and not self.is_move_useless(m, opponent, battle)]
+                if not valid_moves:
+                    valid_moves = [m for m in battle.available_moves if m.id in ['seismictoss', 'nightshade', 'foulplay', 'counter', 'mirrorcoat', 'metalburst'] and not self.is_move_useless(m, opponent, battle)]
+
                 if valid_moves:
                     lethal_moves = []
                     for m in valid_moves:
@@ -575,25 +601,31 @@ class InstinctCore:
                         return max(valid_moves, key=lambda m: m.base_power * (1.5 if m.type in active.types else 1.0) * opponent.damage_multiplier(m))
 
             if action == "PROTECT":
-                move = next((m for m in active.moves.values() if self.classify_move(m) == MoveCategory.PROTECT), None)
+                move = next((m for m in battle.available_moves if self.classify_move(m) == MoveCategory.PROTECT), None)
                 if move: return move
 
             if action == "TEAM_CURE":
-                move = next((m for m in active.moves.values() if self.classify_move(m) == MoveCategory.TEAM_CURE), None)
+                move = next((m for m in battle.available_moves if self.classify_move(m) == MoveCategory.TEAM_CURE), None)
                 if move and any(mon.status for mon in battle.team.values()): return move
 
             if action == "DEBUFF":
-                move = next((m for m in active.moves.values() if self.classify_move(m) == MoveCategory.DEBUFF), None)
+                move = next((m for m in battle.available_moves if self.classify_move(m) == MoveCategory.DEBUFF), None)
                 if move: return move
 
             if action == "BUFF":
-                move = next((m for m in active.moves.values() if self.classify_move(m) == MoveCategory.SETUP_BUFF), None)
+                move = next((m for m in battle.available_moves if self.classify_move(m) == MoveCategory.SETUP_BUFF), None)
                 if move: return move
 
             if action == "SWITCH":
                 if battle.available_switches: return self.get_best_switch(battle)
 
-        # Fallback de Segurança
         if battle.available_switches:
             return self.get_best_switch(battle)
+            
+        if battle.available_moves:
+            damaging = [m for m in battle.available_moves if m.base_power > 0]
+            if damaging:
+                return max(damaging, key=lambda m: m.base_power)
+            return battle.available_moves[0]
+            
         return None

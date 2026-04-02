@@ -13,31 +13,15 @@ class BlueBrain:
         
         self.q_table = {}
         
-        self.last_state = None
-        self.last_action_idx = None
-        self.previous_my_fainted = 0
-        self.previous_opp_fainted = 0
-        
-        # EXATAMENTE AS 5 AÇÕES DA MATRIZ
-        self.actions = ["ATTACK", "SWITCH", "SETUP", "HAZARD", "HEAL"]
+        # As 12 Ações Exatas do Instinto (Sem agrupamentos)
+        self.actions = [
+            "ATTACK", "SWITCH", "BUFF", "DEBUFF", "STATUS", "PROTECT", 
+            "HAZARD", "HEAL", "HEAL_50", "TEAM_CURE", "CLEAN", "STAT_CLEAN"
+        ]
 
         self.load_model("blue_brain.pkl")
 
-    def _map_to_q_action(self, intent):
-        """Força as intenções do Core a se enquadrarem nas 5 ações limitadas da Q-Table."""
-        mapping = {
-            "HEAL_50": "HEAL",
-            "TEAM_CURE": "HEAL",
-            "CLEAN": "HAZARD",
-            "STAT_CLEAN": "HAZARD",
-            "STATUS": "SETUP",
-            "DEBUFF": "SETUP",
-            "PROTECT": "SETUP",
-            "BUFF": "SETUP"
-        }
-        return mapping.get(intent, intent)
-
-    def calculate_reward(self, battle):
+    def calculate_reward(self, battle, history):
         R_WIN = 2000.0   
         R_LOSE = -1500.0 
         R_KILL = 300.0   
@@ -51,70 +35,60 @@ class BlueBrain:
         current_my_fainted = len([m for m in battle.team.values() if m.fainted])
         current_opp_fainted = len([m for m in battle.opponent_team.values() if m.fainted])
         
-        new_kills = current_opp_fainted - self.previous_opp_fainted
-        new_deaths = current_my_fainted - self.previous_my_fainted
+        prev_my_fainted = history.get('my_fainted', 0)
+        prev_opp_fainted = history.get('opp_fainted', 0)
+        last_action = history.get('last_action', None)
+        
+        new_kills = current_opp_fainted - prev_opp_fainted
+        new_deaths = current_my_fainted - prev_my_fainted
         
         if new_kills > 0: reward += (R_KILL * new_kills)
         if new_deaths > 0: reward += (R_DEATH * new_deaths)
         
-        if self.last_action_idx is not None and self.actions[self.last_action_idx] == "SWITCH":
-            reward += R_SWITCH_PENALTY
+        if last_action == "SWITCH": reward += R_SWITCH_PENALTY
 
-        self.previous_my_fainted = current_my_fainted
-        self.previous_opp_fainted = current_opp_fainted
         return reward
 
-    def update_feedback(self, current_state, battle):
-        """Calcula o resultado do turno anterior e atualiza a matriz."""
-        reward = self.calculate_reward(battle)
-        
-        if self.last_state is not None and self.last_action_idx is not None:
+    def update_feedback(self, current_state, last_state, last_action, reward):
+        if last_state is not None and last_action is not None:
             if current_state not in self.q_table:
                 self.q_table[current_state] = np.zeros(len(self.actions))
+            if last_state not in self.q_table:
+                self.q_table[last_state] = np.zeros(len(self.actions))
             
-            old_val = self.q_table[self.last_state][self.last_action_idx]
+            action_idx = self.actions.index(last_action)
+            old_val = self.q_table[last_state][action_idx]
             next_max = np.max(self.q_table[current_state])
             
             new_val = (1 - self.alpha) * old_val + self.alpha * (reward + self.gamma * next_max)
-            self.q_table[self.last_state][self.last_action_idx] = new_val
+            self.q_table[last_state][action_idx] = new_val
 
     def decide_action(self, state, instinct_intent):
         if state not in self.q_table:
             self.q_table[state] = np.zeros(len(self.actions))
 
-        mapped_intent = self._map_to_q_action(instinct_intent)
-        if mapped_intent not in self.actions:
-            mapped_intent = "ATTACK"
+        # Se houver falha e a intenção não estiver mapeada, ataca
+        if instinct_intent not in self.actions:
+            instinct_intent = "ATTACK"
         
-        instinct_idx = self.actions.index(mapped_intent)
+        instinct_idx = self.actions.index(instinct_intent)
         q_value_instinct = self.q_table[state][instinct_idx]
 
-        # 1. Instinto >= 0: Prioridade Absoluta
         if q_value_instinct >= 0:
             action_idx = instinct_idx
         else:
-            # 2. Instinto < 0: Procura alternativas estritamente positivas (> 0)
             available_indices = [i for i in range(len(self.actions)) if i != instinct_idx]
             positive_options = [i for i in available_indices if self.q_table[state][i] > 0]
             
             if positive_options:
-                # Se houver opções positivas comprovadas, prefere a maior delas
                 action_idx = max(positive_options, key=lambda idx: self.q_table[state][idx])
             else:
-                # 3. Nenhuma opção > 0 existe.
-                # Usa exploração mínima para tentar descobrir uma jogada boa.
-                # Se não for explorar, reverte forçosamente para o instinto conforme sua regra.
                 if random.random() < self.epsilon:
                     action_idx = random.choice(available_indices)
                 else:
                     action_idx = instinct_idx
 
-        self.last_state = state
-        self.last_action_idx = action_idx
-        
-        # Reduz a taxa de exploração gradativamente
         self.epsilon = max(self.min_epsilon, self.epsilon * self.epsilon_decay)
-
         return self.actions[action_idx]
 
     def _get_root_path(self, filename):
