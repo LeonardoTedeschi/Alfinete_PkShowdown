@@ -4,7 +4,7 @@ import os
 import random
 
 class BlueBrain:
-    def __init__(self, alpha=0.1, gamma=0.8, epsilon=0.3, min_epsilon=0.01, decay=0.99995):
+    def __init__(self, alpha=0.1, gamma=0.95, epsilon=0.4, min_epsilon=0.01, decay=0.99995):
         self.alpha = alpha
         self.gamma = gamma
         self.epsilon = epsilon
@@ -67,26 +67,37 @@ class BlueBrain:
         if state not in self.q_table:
             self.q_table[state] = np.zeros(len(self.actions))
 
-        # Se houver falha e a intenção não estiver mapeada, ataca
         if instinct_intent not in self.actions:
             instinct_intent = "ATTACK"
         
         instinct_idx = self.actions.index(instinct_intent)
-        q_value_instinct = self.q_table[state][instinct_idx]
 
-        if q_value_instinct >= 0:
-            action_idx = instinct_idx
+        # Exploração aleatória controlada pelo Epsilon
+        if random.random() < self.epsilon:
+            action_idx = random.choice(range(len(self.actions)))
         else:
-            available_indices = [i for i in range(len(self.actions)) if i != instinct_idx]
-            positive_options = [i for i in available_indices if self.q_table[state][i] > 0]
-            
-            if positive_options:
-                action_idx = max(positive_options, key=lambda idx: self.q_table[state][idx])
-            else:
-                if random.random() < self.epsilon:
-                    action_idx = random.choice(available_indices)
+            q_instinct = self.q_table[state][instinct_idx]
+            best_action_idx = np.argmax(self.q_table[state])
+            best_q_value = self.q_table[state][best_action_idx]
+
+            # Regra 1: Se o instinto for positivo ou neutro (0.0)
+            if q_instinct >= 0:
+                # Checa as demais opções. Se houver uma mais positiva, escolhe ela.
+                if best_q_value > q_instinct:
+                    action_idx = best_action_idx
+                # Se não houver (ou houver empate), usamos a do instinto.
                 else:
                     action_idx = instinct_idx
+            
+            # Regra 2: Se o instinto for negativo
+            else:
+                # Buscamos outra opção com recompensa mais alta (que não seja negativa)
+                if best_q_value >= 0:
+                    action_idx = best_action_idx
+                # Se não houver nenhuma (todas são negativas), fazemos uma jogada aleatória
+                else:
+                    available_indices = [i for i in range(len(self.actions)) if i != instinct_idx]
+                    action_idx = random.choice(available_indices) if available_indices else instinct_idx
 
         self.epsilon = max(self.min_epsilon, self.epsilon * self.epsilon_decay)
         return self.actions[action_idx]

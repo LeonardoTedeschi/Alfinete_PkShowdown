@@ -6,9 +6,17 @@ import logging
 import csv
 import warnings
 
+# --- 1. CONFIGURAÇÃO DE CAMINHOS ---
 current_dir = os.path.dirname(os.path.abspath(__file__))
 repo_root = os.path.abspath(os.path.join(current_dir, '..'))
 suporte_treinamento_dir = os.path.join(repo_root, 'Suporte_Treinamento')
+
+# Caminho absoluto para a versão antiga do Instinto
+caminho_antigo = r"C:\Projetos Robotica Computacional\Projeto Showdown IA Pokemon\Bot-QV-Pokemon\Instinto\Vesão antiga"
+
+# Inserir no índice 0 garante que o Python priorize essa pasta ao procurar o instinct_bot
+if caminho_antigo not in sys.path:
+    sys.path.insert(0, caminho_antigo)
 
 if current_dir not in sys.path: sys.path.append(current_dir)
 if suporte_treinamento_dir not in sys.path: sys.path.append(suporte_treinamento_dir)
@@ -25,13 +33,15 @@ try:
     from blue_brain import BlueBrain
     from Suporte.teams import RandomTeamFromPool, TEAMS_LIST
     import Suporte.plot_graph as plot_graph
-    from Suporte.rivals import MaxDamagePlayer
+    
+    # Importado diretamente da pasta "Vesão antiga"
+    from instinct_bot import InstinctBot 
 except ImportError as e:
     print(f"[ERRO] Falha de importação: {e}")
     sys.exit(1)
 
 LOCAL_CONFIG = ServerConfiguration("ws://127.0.0.1:8000/showdown/websocket", "http://127.0.0.1:8000/")
-BLOCK_SIZE = 200
+BLOCK_SIZE = 1000
 
 class BLUE(Player):
     def __init__(self, *args, **kwargs):
@@ -65,7 +75,6 @@ class BLUE(Player):
                 if b_id in self.battles:
                     del self.battles[b_id]
 
-    # --- FLUXO FIM DE BATALHA: Agente -> Cérebro ---
     def _process_end_battle(self, battle):
         self.total_completed_battles += 1
         if battle.won:
@@ -105,31 +114,27 @@ class BLUE(Player):
         except Exception:
             pass
 
-    # --- FLUXO INÍCIO DE BATALHA: Agente -> Instinto -> Agente ---
     def teampreview(self, battle):
         try:
             return self.core.get_best_lead(battle)
         except Exception:
             return "/team 123456"
 
-    # --- FLUXO TURNOS ---
     def choose_move(self, battle):
         self.check_finished_battles()
         
         try:
             history = self.battle_history.get(battle.battle_tag, {})
 
-            # 1. TROCA FORÇADA INTELIGENTE (Usa o histórico para prever quem entra)
             switch_forced = False
             if isinstance(battle.force_switch, list): switch_forced = any(battle.force_switch)
             else: switch_forced = bool(battle.force_switch)
 
             if switch_forced or (battle.active_pokemon and battle.active_pokemon.fainted):
-                best_switch = self.core.get_best_switch(battle, history)
+                best_switch = self.core.get_best_switch(battle)
                 if best_switch: return self.create_order(best_switch)
                 return self.choose_random_move(battle)
 
-            # 2. FEEDBACK PARA O Q-LEARNING (Agente -> Cérebro)
             current_state = self.core.get_state(battle)
             
             if history:
@@ -140,7 +145,6 @@ class BLUE(Player):
                 if last_state and last_action:
                     self.brain.update_feedback(current_state, last_state, last_action, reward)
 
-            # 3. TOMADA DE DECISÃO (Agente -> Instinto -> Cérebro)
             instinct_intent = self.core.get_intent(battle)
             final_decision = self.brain.decide_action(current_state, instinct_intent)
 
@@ -154,31 +158,24 @@ class BLUE(Player):
                 'last_opp_species': opp_species 
             }
 
-            # 4. EXECUÇÃO RÍGIDA (Anti-Random)
-            # A lista garante que ele tenta a decisão do Cérebro -> Instinto -> Dano Bruto -> Troca Segura
             execution_list = [final_decision, instinct_intent, "ATTACK", "SWITCH"]
             best_object = self.core.get_best_execution_object(execution_list, battle)
 
             if best_object:
                 return self.create_order(best_object)
             else:
-                # O bot só chega aqui se TODAS as opções do cérebro/instinto falharem
-                # e ele não tiver nenhum ataque válido ou Pokémon vivo para trocar.
-                print(f"[ALERTA DADOS] Q-Table ignorada! Fallback Random forçado no estado: {current_state}")
                 return self.choose_random_move(battle)
 
         except Exception as e:
-            # Em vez de floodar a tela, mostra o erro e avisa a impureza
-            print(f"[ERRO NO TURNO - DADO IMPURO] {e}")
+            print(f"[ERRO NO TURNO] {e}")
             return self.choose_random_move(battle)
 
-
 # =============================================================================
-# BLOCO DE EXECUÇÃO PADRÃO COM PROTEÇÃO DE REDE (WATCHDOG)
+# BLOCO DE EXECUÇÃO PADRÃO
 # =============================================================================
 async def main():
     n_battles = 10000
-    CONCURRENCY = 5
+    CONCURRENCY = 2
     
     team_builder = RandomTeamFromPool(TEAMS_LIST)
     
@@ -189,7 +186,8 @@ async def main():
         max_concurrent_battles=CONCURRENCY
     )
     
-    rival = MaxDamagePlayer(
+    # RIVAL: Carregado da pasta legada
+    rival = InstinctBot(
         battle_format="gen9nationaldex", 
         server_configuration=LOCAL_CONFIG,
         team=team_builder,
@@ -206,14 +204,11 @@ async def main():
     start_time = time.time()
 
     try:
-        # Loop seguro: Só encerra quando as 5000 batalhas forem reais e concluídas
         while bot.total_completed_battles < n_battles:
             faltam = n_battles - bot.total_completed_battles
             current_batch = min(BLOCK_SIZE, faltam)
             
             try:
-                # WATCHDOG: Batalhas locais duram segundos. 
-                # Se o lote demorar 5 minutos (300s), o servidor perdeu a conexão.
                 await asyncio.wait_for(
                     bot.battle_against(rival, n_battles=current_batch),
                     timeout=300
@@ -222,7 +217,7 @@ async def main():
                 print("\n[WATCHDOG] O servidor Showdown engoliu um pacote (Ghost Battle). Destravando rede...")
                 bot.battles.clear()
                 rival.battles.clear()
-                await asyncio.sleep(2) # Pausa para o servidor Node.js respirar
+                await asyncio.sleep(2)
             except Exception:
                 pass
                 

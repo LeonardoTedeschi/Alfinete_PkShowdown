@@ -1,5 +1,5 @@
+import traceback
 import random
-import traceback # Para logar erros sem travar o bot
 from enum import Enum
 from poke_env.player import Player
 
@@ -11,15 +11,15 @@ class Role(Enum):
     TANK_BULK = 3
 
 class MatchupState(Enum):
-    DOMINANT = 1       # Eu SE / Ele NVE
-    VOLATILE = 2       # Eu SE / Ele SE
-    OFFENSIVE_ADV = 3  # Eu SE / Ele Neutro
-    DEFENSIVE_ADV = 4  # Eu Neutro / Ele NVE
-    DEFENSIVE_DIS = 5  # Eu Neutro / Ele SE
-    OFFENSIVE_DIS = 6  # Eu NVE / Ele Neutro 
-    STALEMATE = 7      # Eu NVE / Ele NVE 
-    NEUTRAL = 8        # Neutro / Neutro
-    CRITICAL_DIS = 9   # Eu NVE / Ele SE
+    DOMINANT = 1       
+    VOLATILE = 2       
+    OFFENSIVE_ADV = 3  
+    DEFENSIVE_ADV = 4  
+    DEFENSIVE_DIS = 5  
+    OFFENSIVE_DIS = 6   
+    STALEMATE = 7       
+    NEUTRAL = 8        
+    CRITICAL_DIS = 9   
 
 class MoveCategory(Enum):
     ATTACK_PHYSICAL = 1
@@ -44,75 +44,58 @@ class InstinctBot(Player):
     # =========================================================================
 
     def _get_role(self, pokemon) -> Role:
-        """Classifica a Role baseada nos Base Stats fixos da espécie."""
-        b_spd = pokemon.base_stats['spe']
-        b_atk = pokemon.base_stats['atk']
-        b_spa = pokemon.base_stats['spa']
-        b_hp  = pokemon.base_stats['hp']
-        b_def = pokemon.base_stats['def']
-        b_res = pokemon.base_stats['spd']
+        if not pokemon: return Role.UTILITY
+        b_spd = pokemon.base_stats.get('spe', 0)
+        b_atk = pokemon.base_stats.get('atk', 0)
+        b_spa = pokemon.base_stats.get('spa', 0)
+        b_hp  = pokemon.base_stats.get('hp', 0)
+        b_def = pokemon.base_stats.get('def', 0)
+        b_res = pokemon.base_stats.get('spd', 0)
 
-        # 1. SWEEPER (Rápido e Ofensivo)
         if b_spd >= 80 and (b_atk >= 90 or b_spa >= 90):
             return Role.SPEED_SWEEPER
 
-        # 2. TANK (Resistente)
         is_high_hp_tank = (b_hp >= 100 and (b_def >= 100 or b_res >= 100))
         is_wall_tank = (b_def >= 100 and b_res >= 100)
 
-        if is_high_hp_tank or is_wall_tank:
-            return Role.TANK_BULK
-
-        # 3. RESTO (Utility/Pivot)
+        if is_high_hp_tank or is_wall_tank: return Role.TANK_BULK
         return Role.UTILITY
 
     def _get_speed_mod(self, pokemon):
         mod = 1.0
-        if pokemon.status and 'PAR' in str(pokemon.status).upper(): 
-            mod *= 0.5
+        if pokemon.status and 'PAR' in str(pokemon.status).upper(): mod *= 0.5
         stage = pokemon.boosts.get('spe', 0)
         if stage > 0: mod *= (1 + 0.5 * stage)
         elif stage < 0: mod *= (2 / (2 + abs(stage)))
         return mod
 
     def _estimate_stat(self, pokemon, stat_name):
-        """Calcula ou Estima os Stats numéricos."""
-        # 1. Se for MEU Pokémon, retorna o valor exato
         if pokemon.stats and pokemon.stats.get(stat_name) is not None:
             val = pokemon.stats[stat_name]
             if stat_name == 'spe': return val * self._get_speed_mod(pokemon)
-            
             modifier = pokemon.boosts.get(stat_name, 0)
             if modifier > 0: val *= (1 + 0.5 * modifier)
             elif modifier < 0: val *= (2 / (2 + abs(modifier)))
             return int(val)
 
-        # 2. Se for INIMIGO, Inferência baseada na Role
-        base = pokemon.base_stats[stat_name]
+        base = pokemon.base_stats.get(stat_name, 50)
         role = self._get_role(pokemon)
         
-        def calc_max(b, is_hp=False):
-            if is_hp: return int(b * 2 + 204)
-            return int((b * 2 + 99) * 1.1)
-
-        def calc_min(b, is_hp=False):
-            if is_hp: return int(b * 2 + 141)
-            return int(b * 2 + 36)
+        def calc_max(b, is_hp=False): return int(b * 2 + 204) if is_hp else int((b * 2 + 99) * 1.1)
+        def calc_min(b, is_hp=False): return int(b * 2 + 141) if is_hp else int(b * 2 + 36)
 
         estimated = 0
         if role == Role.SPEED_SWEEPER:
             if stat_name == 'spe': estimated = calc_max(base)
-            elif stat_name == 'atk' and pokemon.base_stats['atk'] >= pokemon.base_stats['spa']: estimated = calc_max(base)
-            elif stat_name == 'spa' and pokemon.base_stats['spa'] > pokemon.base_stats['atk']: estimated = calc_max(base)
+            elif stat_name == 'atk' and pokemon.base_stats.get('atk',0) >= pokemon.base_stats.get('spa',0): estimated = calc_max(base)
+            elif stat_name == 'spa' and pokemon.base_stats.get('spa',0) > pokemon.base_stats.get('atk',0): estimated = calc_max(base)
             else: estimated = calc_min(base, stat_name=='hp')
-        
         elif role == Role.TANK_BULK:
             if stat_name == 'hp': estimated = calc_max(base, is_hp=True)
-            elif stat_name == 'def' and pokemon.base_stats['def'] >= pokemon.base_stats['spd']: estimated = calc_max(base)
-            elif stat_name == 'spd' and pokemon.base_stats['spd'] > pokemon.base_stats['def']: estimated = calc_max(base)
+            elif stat_name == 'def' and pokemon.base_stats.get('def',0) >= pokemon.base_stats.get('spd',0): estimated = calc_max(base)
+            elif stat_name == 'spd' and pokemon.base_stats.get('spd',0) > pokemon.base_stats.get('def',0): estimated = calc_max(base)
             else: estimated = calc_min(base)
-
-        else: # Utility
+        else:
             if stat_name == 'hp': estimated = calc_max(base, is_hp=True)
             else: estimated = calc_min(base) 
 
@@ -130,47 +113,34 @@ class InstinctBot(Player):
         if mid in ['haze', 'clearsmog']: return MoveCategory.STAT_CLEAN
         if mid in ['healbell', 'aromatherapy']: return MoveCategory.TEAM_CURE
         if mid in ['snarl', 'strugglebug', 'confusray', 'fakeout', 'tickle', 'nobleroar', 'charm', 'partingshot']: return MoveCategory.DEBUFF
-
         if move.category.name == 'PHYSICAL': return MoveCategory.ATTACK_PHYSICAL
         if move.category.name == 'SPECIAL': return MoveCategory.ATTACK_SPECIAL
-        
-        if move.heal > 0 or mid in ['roost', 'recover', 'synthesis', 'softboiled', 'wish', 'moonlight', 'morning sun', 'slackoff']:
-            return MoveCategory.RECOVERY
-        if move.weather or mid in ['raindance', 'sunnyday', 'sandstorm', 'hail', 'snowscape']:
-            return MoveCategory.WEATHER
-        if mid in ['stealthrock', 'spikes', 'toxicspikes', 'stickyweb', 'defog', 'rapidspin', 'mortalspin', 'tidyup']:
-            return MoveCategory.HAZARD
-        if move.boosts and move.target == 'self':
-            return MoveCategory.SETUP_BUFF
-        if move.status or (move.boosts and move.target == 'normal'):
-            return MoveCategory.STATUS_CTRL
-            
+        if move.heal > 0 or mid in ['roost', 'recover', 'synthesis', 'softboiled', 'wish', 'moonlight', 'morning sun', 'slackoff']: return MoveCategory.RECOVERY
+        if move.weather or mid in ['raindance', 'sunnyday', 'sandstorm', 'hail', 'snowscape']: return MoveCategory.WEATHER
+        if mid in ['stealthrock', 'spikes', 'toxicspikes', 'stickyweb', 'defog', 'rapidspin', 'mortalspin', 'tidyup']: return MoveCategory.HAZARD
+        if move.boosts and move.target == 'self': return MoveCategory.SETUP_BUFF
+        if move.status or (move.boosts and move.target == 'normal'): return MoveCategory.STATUS_CTRL
         return MoveCategory.UNKNOWN
 
-    def _is_move_useless(self, move, opp_pokemon):
-        """Verifica imunidades de tipo, status e habilidades especiais."""
+    def _is_move_useless(self, move, opp_pokemon, battle):
+        """Nova versão alinhada com o Core (Proteção de Magic Bounce e Synchronize)."""
         if not opp_pokemon: return False
         
         opp_types = [str(t).upper() for t in opp_pokemon.types if t]
         move_id = move.id
         move_type = str(move.type).upper()
         
-        # --- CORREÇÃO: Tratamento seguro de habilidades ---
         opp_abilities = []
         if opp_pokemon.ability:
             opp_abilities = [str(opp_pokemon.ability).lower()]
         elif opp_pokemon.possible_abilities:
             opp_abilities = [str(a).lower() for a in opp_pokemon.possible_abilities]
 
-        # 1. Wonder Guard (Imune a tudo que não for Super Efetivo)
         if 'wonderguard' in opp_abilities:
             if move.category.name in ['PHYSICAL', 'SPECIAL'] and move.base_power > 0:
-                if opp_pokemon.damage_multiplier(move) < 2.0:
-                    return True
-            if move.category.name == 'STATUS':
-                return True # Wonder Guard bloqueia status move na maioria das regras
+                if opp_pokemon.damage_multiplier(move) < 2.0: return True
+            if move.category.name == 'STATUS': return True 
 
-        # 2. Imunidades de Absorção de Tipo (Habilidades)
         type_absorb_map = {
             'water': ['waterabsorb', 'dryskin', 'stormdrain'],
             'ground': ['levitate'],
@@ -180,40 +150,40 @@ class InstinctBot(Player):
         }
         
         if move.category.name in ['PHYSICAL', 'SPECIAL'] and move.base_power > 0:
-            # Imunidade Natural (Tipo x Tipo)
             if opp_pokemon.damage_multiplier(move) == 0: return True
-            
-            # Imunidade por Habilidade
             for immune_type, abilities in type_absorb_map.items():
                 if move_type == immune_type.upper():
                     if any(ab in opp_abilities for ab in abilities): return True
 
-        # 3. Imunidades a Status Específicos
         if move.category.name == 'STATUS':
-            # Imunidades Gerais de Tipo
             if move_id in ['toxic', 'poisonpowder', 'poisongas'] and ('STEEL' in opp_types or 'POISON' in opp_types): return True
             if move_id == 'thunderwave' and ('GROUND' in opp_types or 'ELECTRIC' in opp_types): return True
             if move_id == 'willowisp' and 'FIRE' in opp_types: return True
             if move_id in ['leechseed', 'spore', 'sleeppowder', 'stunspore', 'ragepowder'] and 'GRASS' in opp_types: return True
             
-            # Imunidades por Habilidade
+            if any(ab in opp_abilities for ab in ['magicbounce']) and move.target in ['normal', 'allAdjacentFoes', 'foeSide']: 
+                return True
+            
+            if any(ab in opp_abilities for ab in ['synchronize']):
+                my_types = [str(t).upper() for t in battle.active_pokemon.types if t]
+                if move_id in ['toxic', 'poisongas'] and 'POISON' not in my_types and 'STEEL' not in my_types: return True
+                if move_id == 'willowisp' and 'FIRE' not in my_types: return True
+                if move_id in ['thunderwave', 'stunspore'] and 'ELECTRIC' not in my_types and 'GROUND' not in my_types: return True
+
             if any(ab in opp_abilities for ab in ['immunity']) and move_id in ['toxic', 'poisongas']: return True
             if any(ab in opp_abilities for ab in ['limber']) and move_id == 'thunderwave': return True
             if any(ab in opp_abilities for ab in ['insomnia', 'vitalspirit', 'sweetveil']) and move_id in ['spore', 'hypnosis', 'sleeppowder']: return True
             if any(ab in opp_abilities for ab in ['owntempo', 'oblivious']) and move_id in ['confuseray', 'swagger']: return True
             if any(ab in opp_abilities for ab in ['waterveil', 'waterbubble']) and move_id == 'willowisp': return True
             if any(ab in opp_abilities for ab in ['magmaarmor']) and 'freeze' in move_id: return True
-            if any(ab in opp_abilities for ab in ['goodasgold']): return True # Gholdengo
+            if any(ab in opp_abilities for ab in ['goodasgold']): return True 
             if any(ab in opp_abilities for ab in ['overcoat']) and move_id in ['spore', 'sleeppowder', 'stunspore', 'poisonpowder']: return True
             if any(ab in opp_abilities for ab in ['magicguard']) and move_id in ['toxic', 'willowisp']: return True
 
-        # 4. Imunidade a Prioridade (Dazzling/Queenly Majesty/Armor Tail)
         if move.priority > 0:
             if any(ab in opp_abilities for ab in ['dazzling', 'queenlymajesty', 'armortail']): return True
-            # CORREÇÃO: Usa a lista segura opp_abilities aqui também
             if 'psychicsurge' in opp_abilities and 'psychicterrain' in str(battle.fields): return True
 
-        # 5. Imunidade a Stat Drops / Troca Forçada
         if any(ab in opp_abilities for ab in ['clearbody', 'whitesmoke', 'fullmetalbody']):
             if move.boosts and move.target == 'normal' and any(v < 0 for v in move.boosts.values()): return True
         
@@ -223,14 +193,14 @@ class InstinctBot(Player):
         return False
 
     def _get_matchup_state(self, my_mon, opp_mon) -> MatchupState:
-        # Analisa MEUS ataques
+        if not my_mon or not opp_mon: return MatchupState.NEUTRAL
+        
         my_moves = [m for m in my_mon.moves.values() if m.base_power > 0]
         if not my_moves:
             my_best_mult = 1.0
         else:
             my_best_mult = max([opp_mon.damage_multiplier(move) for move in my_moves])
 
-        # Analisa TIPOS do oponente (STAB presumido)
         opp_best_mult = 0.0
         for type_ in opp_mon.types:
              if type_:
@@ -238,7 +208,6 @@ class InstinctBot(Player):
                  if multiplier > opp_best_mult: opp_best_mult = multiplier
         if opp_best_mult == 0.0: opp_best_mult = 1.0 
 
-        # Classificação Expandida
         my_se = my_best_mult > 1.5
         my_neutral = 0.9 <= my_best_mult <= 1.5
         my_nve = my_best_mult < 0.9
@@ -247,45 +216,39 @@ class InstinctBot(Player):
         opp_neutral = 0.9 <= opp_best_mult <= 1.5
         opp_nve = opp_best_mult < 0.9
 
-        # Matriz 3x3 de estados atualizada
         if my_se:
-            if opp_se: return MatchupState.VOLATILE       # Perigo Mútuo
+            if opp_se: return MatchupState.VOLATILE       
             if opp_neutral: return MatchupState.OFFENSIVE_ADV
-            if opp_nve: return MatchupState.DOMINANT      # Vantagem Total
+            if opp_nve: return MatchupState.DOMINANT      
         
         if my_neutral:
             if opp_se: return MatchupState.DEFENSIVE_DIS
             if opp_neutral: return MatchupState.NEUTRAL
-            if opp_nve: return MatchupState.DEFENSIVE_ADV # NOVO: Eu Neutro / Ele NVE
+            if opp_nve: return MatchupState.DEFENSIVE_ADV 
             
         if my_nve:
-            if opp_se: return MatchupState.CRITICAL_DIS   # Desvantagem Total
+            if opp_se: return MatchupState.CRITICAL_DIS   
             if opp_neutral: return MatchupState.OFFENSIVE_DIS
-            if opp_nve: return MatchupState.STALEMATE     # NOVO: Empate NVE vs NVE
+            if opp_nve: return MatchupState.STALEMATE     
 
         return MatchupState.NEUTRAL
 
     def _is_threatening(self, my_mon, opp_mon):
-        if opp_mon.boosts.get('atk', 0) >= 2 or opp_mon.boosts.get('spa', 0) >= 2:
-            return True
+        if not my_mon or not opp_mon: return False
+        if opp_mon.boosts.get('atk', 0) >= 2 or opp_mon.boosts.get('spa', 0) >= 2: return True
         
         my_speed = self._estimate_stat(my_mon, 'spe')
         opp_speed = self._estimate_stat(opp_mon, 'spe')
         
         if my_mon.current_hp_fraction < 0.45 and opp_speed > my_speed:
             opp_atk = max(self._estimate_stat(opp_mon, 'atk'), self._estimate_stat(opp_mon, 'spa'))
-            if opp_atk > 250:
-                return True
+            if opp_atk > 250: return True
         return False
 
-    # --- SAFETY CHECKS ---
     def _is_hazard_already_set(self, move, battle):
         conditions = [str(k).upper() for k in battle.opponent_side_conditions.keys()]
-        
-        if move.id == 'stealthrock':
-            return any('STEALTH_ROCK' in c for c in conditions)
-        if move.id == 'stickyweb':
-            return any('STICKY_WEB' in c for c in conditions)
+        if move.id == 'stealthrock': return any('STEALTH_ROCK' in c for c in conditions)
+        if move.id == 'stickyweb': return any('STICKY_WEB' in c for c in conditions)
         if move.id == 'toxicspikes':
             for k, v in battle.opponent_side_conditions.items():
                 if 'TOXIC_SPIKES' in str(k).upper(): return v >= 2
@@ -301,84 +264,70 @@ class InstinctBot(Player):
     # =========================================================================
 
     def teampreview(self, battle):
-        # PROTEÇÃO CONTRA CRASH NO PREVIEW
         try:
             opp_team = list(battle.opponent_team.values())
             my_team = list(battle.team.values())
             
             if opp_team:
-                avg_base_speed = sum(m.base_stats['spe'] for m in opp_team) / len(opp_team)
+                avg_base_speed = sum(m.base_stats.get('spe', 50) for m in opp_team) / len(opp_team)
             else:
                 avg_base_speed = 100
             
             is_slow_archetype = avg_base_speed < 80 
-
-            # Inteligência de Clima
             weather_setters = ['drought', 'drizzle', 'sandstream', 'snowwarning']
             opp_has_weather = any(m.ability in weather_setters for m in opp_team)
             my_weather_setter = next((m for m in my_team if m.ability in weather_setters), None)
 
             predicted_lead = None
-            if opp_has_weather:
+            if opp_has_weather: 
                 predicted_lead = next((m for m in opp_team if m.ability in weather_setters), opp_team[0])
-            elif is_slow_archetype:
-                 predicted_lead = min(opp_team, key=lambda m: m.base_stats['spe'])
+            elif is_slow_archetype: 
+                predicted_lead = min(opp_team, key=lambda m: m.base_stats.get('spe', 50))
             else:
-                 if opp_team:
-                    predicted_lead = max(opp_team, key=lambda m: m.base_stats['spe'])
+                 if opp_team: predicted_lead = max(opp_team, key=lambda m: m.base_stats.get('spe', 50))
 
             if not predicted_lead and opp_team: predicted_lead = opp_team[0]
             
             best_lead = None
-            if my_weather_setter:
-                best_lead = my_weather_setter # Prioriza meu setter
+            if my_weather_setter: 
+                best_lead = my_weather_setter 
             elif predicted_lead:
                 def lead_score(m):
                     advantage = 10 if self._get_matchup_state(m, predicted_lead) in [MatchupState.DOMINANT, MatchupState.OFFENSIVE_ADV] else 0
                     if is_slow_archetype: return advantage
-                    return advantage + m.stats['spe']
-
+                    return advantage + m.base_stats.get('spe', 50)
                 best_lead = max(battle.team.values(), key=lead_score)
             else:
                 best_lead = list(battle.team.values())[0]
 
-            try:
-                lead_index = my_team.index(best_lead) + 1
-            except ValueError:
-                lead_index = 1
+            try: lead_index = my_team.index(best_lead) + 1
+            except ValueError: lead_index = 1
                 
             rest_indices = [str(i + 1) for i in range(len(my_team)) if i + 1 != lead_index]
             team_order = str(lead_index) + "".join(rest_indices)
-            
             return f"/team {team_order}"
         except Exception:
             return "/team 123456"
 
     # =========================================================================
-    # MÓDULO DE COMBATE
+    # MÓDULO DE COMBATE & MATRIZES
     # =========================================================================
 
     def choose_move(self, battle):
-        # BLINDAGEM CONTRA CRASH: Try/Except global para o turno
         try:
-            # --- ADIÇÃO: TRATAMENTO DE U-TURN / VOLT SWITCH / FORCE SWITCH ---
-            # Se o servidor exigir troca (bool ou lista), trocamos imediatamente.
             switch_forced = False
-            if isinstance(battle.force_switch, list):
-                switch_forced = any(battle.force_switch)
-            else:
-                switch_forced = bool(battle.force_switch)
-
-            if switch_forced:
-                return self._choose_switch(battle)
+            if isinstance(battle.force_switch, list): switch_forced = any(battle.force_switch)
+            else: switch_forced = bool(battle.force_switch)
 
             active = battle.active_pokemon
             opponent = battle.opponent_active_pokemon
             
-            if active.fainted:
+            if switch_forced or (active and active.fainted):
                 return self._choose_switch(battle)
 
-            # Coleta de Dados
+            if not active or not opponent:
+                return self.choose_random_move(battle)
+
             my_role = self._get_role(active)
             opp_role = self._get_role(opponent)
             matchup = self._get_matchup_state(active, opponent)
@@ -386,74 +335,41 @@ class InstinctBot(Player):
             my_speed = self._estimate_stat(active, 'spe')
             opp_speed = self._estimate_stat(opponent, 'spe')
             is_faster = my_speed >= opp_speed
-            
             is_threatening = self._is_threatening(active, opponent)
             
-            # --- ROTEAMENTO PARA AS MATRIZES ---
             action_list = ["ATTACK"]
 
             if my_role == Role.SPEED_SWEEPER:
-                if opp_role == Role.SPEED_SWEEPER:
-                    action_list = self._matrix_sweeper_vs_sweeper(is_faster, matchup, is_threatening)
-                elif opp_role == Role.UTILITY:
-                    # IMPLEMENTAÇÃO: NOVA MATRIZ Sweeper vs Utility
-                    action_list = self._matrix_sweeper_vs_utility(matchup, is_faster, is_threatening)
-                else:
-                    action_list = self._matrix_sweeper_vs_tank(active, opponent, matchup)
-            
+                if opp_role == Role.SPEED_SWEEPER: action_list = self._matrix_sweeper_vs_sweeper(is_faster, matchup, is_threatening)
+                elif opp_role == Role.UTILITY: action_list = self._matrix_sweeper_vs_utility(matchup, is_faster, is_threatening)
+                else: action_list = self._matrix_sweeper_vs_tank(active, opponent, matchup)
             elif my_role == Role.UTILITY:
                 action_list = self._matrix_utility_logic(active, opponent, matchup, opp_role, is_faster)
-            
             elif my_role == Role.TANK_BULK:
                 action_list = self._matrix_tank_logic(active, opponent, matchup, opp_role)
-            
-            else:
-                action_list = ["ATTACK"]
 
-            # Envia a lista para o executor
             return self._execute_action(action_list, battle)
             
         except Exception as e:
-            # EM CASO DE ERRO DESCONHECIDO (CRASH DO CÉREBRO)
-            print(f"InstinctBot Panic (Erro Interno): {e}")
             traceback.print_exc()
             return self.choose_random_move(battle)
 
-    # --- MATRIZES (Retornam Listas de Prioridade) ---
-
     def _matrix_sweeper_vs_sweeper(self, is_faster, matchup, is_threatening):
         if is_faster:
-            if matchup in [MatchupState.DOMINANT, MatchupState.OFFENSIVE_ADV]:
-                return ["BUFF", "ATTACK"] if not is_threatening else ["ATTACK"]
-            if matchup in [MatchupState.STALEMATE, MatchupState.DEFENSIVE_DIS, MatchupState.CRITICAL_DIS, MatchupState.OFFENSIVE_DIS]:
-                return ["SWITCH"]
-            if matchup in [MatchupState.NEUTRAL, MatchupState.DEFENSIVE_ADV]:
-                return ["SWITCH"] if is_threatening else ["BUFF", "ATTACK"]
+            if matchup in [MatchupState.DOMINANT, MatchupState.OFFENSIVE_ADV]: return ["BUFF", "ATTACK"] if not is_threatening else ["ATTACK"]
+            if matchup in [MatchupState.STALEMATE, MatchupState.DEFENSIVE_DIS, MatchupState.CRITICAL_DIS, MatchupState.OFFENSIVE_DIS]: return ["SWITCH"]
+            if matchup in [MatchupState.NEUTRAL, MatchupState.DEFENSIVE_ADV]: return ["SWITCH"] if is_threatening else ["BUFF", "ATTACK"]
         else: 
-            if matchup in [MatchupState.DOMINANT, MatchupState.OFFENSIVE_ADV]:
-                return ["SWITCH"] if is_threatening else ["ATTACK"]
+            if matchup in [MatchupState.DOMINANT, MatchupState.OFFENSIVE_ADV]: return ["SWITCH"] if is_threatening else ["ATTACK"]
             return ["SWITCH"]
         return ["ATTACK"]
 
     def _matrix_sweeper_vs_utility(self, matchup, is_faster, is_threatening):
-        # NOVA MATRIZ: Sweepers odeiam levar status de Utility Pokémon.
-        if matchup in [MatchupState.DOMINANT, MatchupState.OFFENSIVE_ADV]:
-            return ["ATTACK", "BUFF"] # Mata antes que ele use status
-        
-        # Em Stalemate (NVE vs NVE), Utility ganha com o tempo. Sai fora.
-        if matchup == MatchupState.STALEMATE:
-            return ["SWITCH"]
-            
-        # Defensive Adv: Se ele não ameaça dano, Sweeper pode tentar buffar.
-        if matchup == MatchupState.DEFENSIVE_ADV:
-            return ["BUFF", "ATTACK"]
-            
-        if matchup in [MatchupState.DEFENSIVE_DIS, MatchupState.CRITICAL_DIS]:
-            return ["SWITCH"]
-            
-        if matchup == MatchupState.VOLATILE:
-            return ["ATTACK"] if is_faster else ["SWITCH"]
-            
+        if matchup in [MatchupState.DOMINANT, MatchupState.OFFENSIVE_ADV]: return ["ATTACK", "BUFF"] 
+        if matchup == MatchupState.STALEMATE: return ["SWITCH"]
+        if matchup == MatchupState.DEFENSIVE_ADV: return ["BUFF", "ATTACK"]
+        if matchup in [MatchupState.DEFENSIVE_DIS, MatchupState.CRITICAL_DIS]: return ["SWITCH"]
+        if matchup == MatchupState.VOLATILE: return ["ATTACK"] if is_faster else ["SWITCH"]
         return ["ATTACK"]
 
     def _matrix_sweeper_vs_tank(self, my_mon, opp_mon, matchup):
@@ -467,74 +383,42 @@ class InstinctBot(Player):
         
         bate_no_forte = my_atk_type == opp_strong_def
 
-        if matchup == MatchupState.DOMINANT:
-            return ["BUFF", "ATTACK"] if bate_no_forte else ["ATTACK"]
-        
-        if matchup == MatchupState.STALEMATE:
-            return ["SWITCH"] # Sweeper não quebra Tank em Stalemate
-            
-        if matchup == MatchupState.DEFENSIVE_ADV:
-            return ["BUFF", "ATTACK"] # Setup livre
-            
-        if matchup in [MatchupState.VOLATILE, MatchupState.OFFENSIVE_ADV]:
-            return ["ATTACK"]
-        if matchup in [MatchupState.DEFENSIVE_DIS, MatchupState.CRITICAL_DIS, MatchupState.NEUTRAL, MatchupState.OFFENSIVE_DIS]:
-            return ["SWITCH"]
+        if matchup == MatchupState.DOMINANT: return ["BUFF", "ATTACK"] if bate_no_forte else ["ATTACK"]
+        if matchup == MatchupState.STALEMATE: return ["SWITCH"] 
+        if matchup == MatchupState.DEFENSIVE_ADV: return ["BUFF", "ATTACK"]
+        if matchup in [MatchupState.VOLATILE, MatchupState.OFFENSIVE_ADV]: return ["ATTACK"]
+        if matchup in [MatchupState.DEFENSIVE_DIS, MatchupState.CRITICAL_DIS, MatchupState.NEUTRAL, MatchupState.OFFENSIVE_DIS]: return ["SWITCH"]
         return ["ATTACK"]
 
     def _matrix_utility_logic(self, active, opponent, matchup, opp_role, is_faster):
         if opp_role in [Role.SPEED_SWEEPER, Role.UTILITY]:
-            if matchup == MatchupState.DOMINANT:
-                return ["HAZARD", "STATUS", "CLEAN", "ATTACK", "DEBUFF", "HEAL", "TEAM_CURE"]
-            
-            if matchup == MatchupState.STALEMATE:
-                return ["STATUS", "HAZARD", "HEAL", "ATTACK"]
-            
+            if matchup == MatchupState.DOMINANT: return ["HAZARD", "STATUS", "CLEAN", "ATTACK", "DEBUFF", "HEAL", "TEAM_CURE"]
+            if matchup == MatchupState.STALEMATE: return ["STATUS", "HAZARD", "HEAL", "ATTACK"]
             if matchup == MatchupState.VOLATILE:
                 if is_faster: return ["ATTACK"]
                 opp_is_physical = self._estimate_stat(opponent, 'atk') > self._estimate_stat(opponent, 'spa')
-                is_right_def = (opp_is_physical and active.base_stats['def'] >= active.base_stats['spd']) or (not opp_is_physical and active.base_stats['spd'] > active.base_stats['def'])
+                is_right_def = (opp_is_physical and active.base_stats.get('def',0) >= active.base_stats.get('spd',0)) or (not opp_is_physical and active.base_stats.get('spd',0) > active.base_stats.get('def',0))
                 return ["ATTACK"] if is_right_def else ["SWITCH"]
-            
-            if matchup == MatchupState.OFFENSIVE_ADV:
-                return ["HAZARD", "STATUS", "ATTACK", "DEBUFF", "CLEAN", "HEAL", "TEAM_CURE"]
-            if matchup in [MatchupState.DEFENSIVE_DIS, MatchupState.CRITICAL_DIS]:
-                return ["SWITCH"]
-            if matchup == MatchupState.NEUTRAL:
-                return ["HAZARD", "STATUS", "ATTACK", "DEBUFF", "CLEAN", "HEAL", "TEAM_CURE"]
-        
+            if matchup == MatchupState.OFFENSIVE_ADV: return ["HAZARD", "STATUS", "ATTACK", "DEBUFF", "CLEAN", "HEAL", "TEAM_CURE"]
+            if matchup in [MatchupState.DEFENSIVE_DIS, MatchupState.CRITICAL_DIS]: return ["SWITCH"]
+            if matchup == MatchupState.NEUTRAL: return ["HAZARD", "STATUS", "ATTACK", "DEBUFF", "CLEAN", "HEAL", "TEAM_CURE"]
         return ["HAZARD", "STATUS", "CLEAN", "ATTACK", "DEBUFF", "HEAL", "TEAM_CURE"]
 
     def _matrix_tank_logic(self, active, opponent, matchup, opp_role):
         opp_is_physical = self._estimate_stat(opponent, 'atk') > self._estimate_stat(opponent, 'spa')
-        is_right_def = (opp_is_physical and active.base_stats['def'] >= active.base_stats['spd']) or (not opp_is_physical and active.base_stats['spd'] > active.base_stats['def'])
+        is_right_def = (opp_is_physical and active.base_stats.get('def',0) >= active.base_stats.get('spd',0)) or (not opp_is_physical and active.base_stats.get('spd',0) > active.base_stats.get('def',0))
 
-        if opp_role == Role.TANK_BULK:
-            return ["STATUS", "HEAL", "PROTECT", "ATTACK", "TEAM_CURE"]
-        
-        if opp_role == Role.UTILITY:
-            return ["STATUS", "ATTACK", "HEAL_50", "PROTECT", "TEAM_CURE"]
-
+        if opp_role == Role.TANK_BULK: return ["STATUS", "HEAL", "PROTECT", "ATTACK", "TEAM_CURE"]
+        if opp_role == Role.UTILITY: return ["STATUS", "ATTACK", "HEAL_50", "PROTECT", "TEAM_CURE"]
         if opp_role == Role.SPEED_SWEEPER:
-            if matchup == MatchupState.STALEMATE:
-                return ["STATUS", "HAZARD", "ATTACK"] # Tank ganha por desgaste
-                
-            if matchup in [MatchupState.DOMINANT, MatchupState.OFFENSIVE_ADV, MatchupState.NEUTRAL]:
-                return ["STATUS", "TEAM_CURE", "ATTACK", "HEAL", "PROTECT"]
-            
-            if matchup in [MatchupState.VOLATILE, MatchupState.DEFENSIVE_DIS]:
-                if is_right_def:
-                    return ["STATUS", "HEAL_50", "PROTECT", "ATTACK"]
-                else:
-                    return ["STATUS", "HEAL_50", "PROTECT", "STAT_CLEAN", "SWITCH"]
-            
-            if matchup == MatchupState.CRITICAL_DIS:
-                return ["STATUS", "HEAL_50", "PROTECT", "STAT_CLEAN", "SWITCH"]
-        
+            if matchup == MatchupState.STALEMATE: return ["STATUS", "HAZARD", "ATTACK"] 
+            if matchup in [MatchupState.DOMINANT, MatchupState.OFFENSIVE_ADV, MatchupState.NEUTRAL]: return ["STATUS", "TEAM_CURE", "ATTACK", "HEAL", "PROTECT"]
+            if matchup in [MatchupState.VOLATILE, MatchupState.DEFENSIVE_DIS]: return ["STATUS", "HEAL_50", "PROTECT", "ATTACK"] if is_right_def else ["STATUS", "HEAL_50", "PROTECT", "STAT_CLEAN", "SWITCH"]
+            if matchup == MatchupState.CRITICAL_DIS: return ["STATUS", "HEAL_50", "PROTECT", "STAT_CLEAN", "SWITCH"]
         return ["ATTACK"]
 
     # =========================================================================
-    # EXECUTOR (LOOP INTELIGENTE)
+    # EXECUTOR (IDÊNTICO AO CORE)
     # =========================================================================
 
     def _execute_action(self, priority_list, battle):
@@ -547,100 +431,105 @@ class InstinctBot(Player):
             priority_list = ["ATTACK"]
 
         for action in priority_list:
-            
-            # 1. CURA
-            if action == "HEAL" or action == "HEAL_50":
+            if action in ["HEAL", "HEAL_50"]:
                 threshold = 0.55 if action == "HEAL_50" else (0.85 if self._is_threatening(active, opponent) else 0.55)
                 if active.current_hp_fraction <= threshold:
-                    move = next((m for m in active.moves.values() if self._classify_move(m) == MoveCategory.RECOVERY), None)
+                    # Agora procura estritamente nos ataques viáveis para evitar problemas de PP
+                    move = next((m for m in battle.available_moves if self._classify_move(m) == MoveCategory.RECOVERY), None)
                     if move: return self.create_order(move)
 
-            # 2. STATUS
             if action == "STATUS":
-                moves = [m for m in active.moves.values() if self._classify_move(m) == MoveCategory.STATUS_CTRL]
+                moves = [m for m in battle.available_moves if self._classify_move(m) == MoveCategory.STATUS_CTRL]
                 for m in moves:
-                    if not opponent.status and not self._is_move_useless(m, opponent): return self.create_order(m)
+                    if not opponent.status and not self._is_move_useless(m, opponent, battle): return self.create_order(m)
 
-            # 3. HAZARD
             if action == "HAZARD":
-                move = next((m for m in active.moves.values() if self._classify_move(m) == MoveCategory.HAZARD and m.id not in ['defog', 'rapidspin']), None)
+                move = next((m for m in battle.available_moves if self._classify_move(m) == MoveCategory.HAZARD and m.id not in ['defog', 'rapidspin']), None)
                 if move and not self._is_hazard_already_set(move, battle): return self.create_order(move)
 
-            # 4. LIMPEZA / HAZE
-            if action == "CLEAN" or action == "STAT_CLEAN":
-                 move = next((m for m in active.moves.values() if self._classify_move(m) in [MoveCategory.STAT_CLEAN, MoveCategory.HAZARD] and m.id in ['defog', 'rapidspin', 'haze', 'clearsmog']), None)
+            if action in ["CLEAN", "STAT_CLEAN"]:
+                 move = next((m for m in battle.available_moves if self._classify_move(m) in [MoveCategory.STAT_CLEAN, MoveCategory.HAZARD] and m.id in ['defog', 'rapidspin', 'haze', 'clearsmog']), None)
                  if move:
                      if move.id in ['defog', 'rapidspin'] and battle.side_conditions: return self.create_order(move)
                      if move.id in ['haze', 'clearsmog'] and any(v > 0 for v in opponent.boosts.values()): return self.create_order(move)
 
-            # 5. ATTACK
             if action == "ATTACK":
-                valid_moves = [m for m in battle.available_moves if m.base_power > 0 and not self._is_move_useless(m, opponent)]
+                valid_moves = [m for m in battle.available_moves if m.base_power > 0 and not self._is_move_useless(m, opponent, battle)]
+                if not valid_moves:
+                    valid_moves = [m for m in battle.available_moves if m.id in ['seismictoss', 'nightshade', 'foulplay', 'counter', 'mirrorcoat', 'metalburst'] and not self._is_move_useless(m, opponent, battle)]
+
                 if valid_moves:
-                    # Tenta achar golpe letal (KO)
                     lethal_moves = []
                     for m in valid_moves:
                         stab = 1.5 if m.type in active.types else 1.0
                         power = m.base_power * stab * opponent.damage_multiplier(m)
-                        
-                        # Se o oponente tem pouco HP e o golpe é forte
                         if opponent.current_hp_fraction < 0.35 and power > 60:
                             lethal_moves.append(m)
                     
                     if lethal_moves:
-                        # Prioriza o mais preciso para finalizar
                         best = max(lethal_moves, key=lambda m: m.accuracy if m.accuracy != True else 100)
                     else:
-                        # Dano bruto máximo: BasePower * STAB * Vantagem de Tipo
                         best = max(valid_moves, key=lambda m: m.base_power * (1.5 if m.type in active.types else 1.0) * opponent.damage_multiplier(m))
-                        
                     return self.create_order(best)
 
-            # 6. PROTECT
             if action == "PROTECT":
-                move = next((m for m in active.moves.values() if self._classify_move(m) == MoveCategory.PROTECT), None)
+                move = next((m for m in battle.available_moves if self._classify_move(m) == MoveCategory.PROTECT), None)
                 if move: return self.create_order(move)
 
-            # 7. TEAM_CURE
             if action == "TEAM_CURE":
-                move = next((m for m in active.moves.values() if self._classify_move(m) == MoveCategory.TEAM_CURE), None)
+                move = next((m for m in battle.available_moves if self._classify_move(m) == MoveCategory.TEAM_CURE), None)
                 if move and any(mon.status for mon in battle.team.values()): return self.create_order(move)
 
-            # 8. DEBUFF
             if action == "DEBUFF":
-                move = next((m for m in active.moves.values() if self._classify_move(m) == MoveCategory.DEBUFF), None)
+                move = next((m for m in battle.available_moves if self._classify_move(m) == MoveCategory.DEBUFF), None)
                 if move: return self.create_order(move)
 
-            # 9. BUFF
             if action == "BUFF":
-                move = next((m for m in active.moves.values() if self._classify_move(m) == MoveCategory.SETUP_BUFF), None)
+                move = next((m for m in battle.available_moves if self._classify_move(m) == MoveCategory.SETUP_BUFF), None)
                 if move: return self.create_order(move)
 
-            # 10. SWITCH
             if action == "SWITCH":
                 if battle.available_switches: return self._choose_switch(battle)
 
-        # Fallback
+        # =========================================================
+        # FALLBACK MÁXIMO (Igual ao Core)
+        # =========================================================
         if battle.available_switches:
             return self._choose_switch(battle)
-        
+            
+        if battle.available_moves:
+            damaging = [m for m in battle.available_moves if m.base_power > 0]
+            if damaging:
+                best_dmg = max(damaging, key=lambda m: m.base_power)
+                return self.create_order(best_dmg)
+            return self.create_order(battle.available_moves[0])
+            
+        # Se absolutamente tudo falhar (ex: preso sem PP)
         return self.choose_random_move(battle)
 
     def _choose_switch(self, battle):
+        """Avalia a troca garantindo o uso de objetos e evitando o crash do damage_multiplier."""
         opponent = battle.opponent_active_pokemon
         candidates = battle.available_switches
+        if not candidates: return self.choose_random_move(battle)
         
         weather_abusers = ['swiftswim', 'chlorophyll', 'sandrush', 'slushrush', 'sandforce', 'solarpower', 'hydration', 'raindish', 'icebody']
         active_weather = battle.weather
         
+        target_types = []
+        if opponent and not opponent.fainted:
+            target_types = [t for t in opponent.types if t]
+        else:
+            alive_opponents = [m for m in battle.opponent_team.values() if not m.fainted]
+            if alive_opponents:
+                for opp in alive_opponents:
+                    target_types.extend([t for t in opp.types if t])
+                target_types = list(set(target_types))
+        
         def get_score(candidate):
             score = 0
             role = self._get_role(candidate)
-            matchup = self._get_matchup_state(candidate, opponent)
-            
             score += candidate.current_hp_fraction * 100
-            
-            # Prioridade de Troca por Clima
             cand_abi = str(candidate.ability).lower() if candidate.ability else ""
             
             if active_weather: 
@@ -650,19 +539,14 @@ class InstinctBot(Player):
                     if 'sand' in str(active_weather).lower() and cand_abi in ['sandrush', 'sandforce']: score += 1000
                     if ('hail' in str(active_weather).lower() or 'snow' in str(active_weather).lower()) and cand_abi in ['slushrush', 'icebody']: score += 1000
 
-            if matchup == MatchupState.DOMINANT: score += 500
-            elif matchup == MatchupState.OFFENSIVE_ADV: score += 300
-            elif matchup == MatchupState.DEFENSIVE_ADV: score += 100
-            elif matchup == MatchupState.DEFENSIVE_DIS: score -= 200
-            elif matchup == MatchupState.OFFENSIVE_DIS: score -= 300
-            elif matchup == MatchupState.CRITICAL_DIS: score -= 500
-            elif matchup == MatchupState.STALEMATE: score -= 50
+            if target_types:
+                for t_type in target_types:
+                    mult = candidate.damage_multiplier(t_type)
+                    if mult < 1.0: score += 150
+                    if mult > 1.0: score -= 200
             
             if role == Role.TANK_BULK: score += 50
             return score
 
-        if candidates:
-            best = max(candidates, key=get_score)
-            return self.create_order(best)
-        
-        return self.choose_random_move(battle)
+        best = max(candidates, key=get_score)
+        return self.create_order(best)
