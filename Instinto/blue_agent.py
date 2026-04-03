@@ -11,13 +11,6 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 repo_root = os.path.abspath(os.path.join(current_dir, '..'))
 suporte_treinamento_dir = os.path.join(repo_root, 'Suporte_Treinamento')
 
-# Caminho absoluto para a versão antiga do Instinto
-caminho_antigo = r"C:\Projetos Robotica Computacional\Projeto Showdown IA Pokemon\Bot-QV-Pokemon\Instinto\Vesão antiga"
-
-# Inserir no índice 0 garante que o Python priorize essa pasta ao procurar o instinct_bot
-if caminho_antigo not in sys.path:
-    sys.path.insert(0, caminho_antigo)
-
 if current_dir not in sys.path: sys.path.append(current_dir)
 if suporte_treinamento_dir not in sys.path: sys.path.append(suporte_treinamento_dir)
 
@@ -34,14 +27,14 @@ try:
     from Suporte.teams import RandomTeamFromPool, TEAMS_LIST
     import Suporte.plot_graph as plot_graph
     
-    # Importado diretamente da pasta "Vesão antiga"
-    from instinct_bot import InstinctBot 
+    # Importação restaurada para o MaxDamage
+    from Suporte.rivals import MaxDamagePlayer
 except ImportError as e:
     print(f"[ERRO] Falha de importação: {e}")
     sys.exit(1)
 
 LOCAL_CONFIG = ServerConfiguration("ws://127.0.0.1:8000/showdown/websocket", "http://127.0.0.1:8000/")
-BLOCK_SIZE = 1000
+BLOCK_SIZE = 500
 
 class BLUE(Player):
     def __init__(self, *args, **kwargs):
@@ -174,8 +167,8 @@ class BLUE(Player):
 # BLOCO DE EXECUÇÃO PADRÃO
 # =============================================================================
 async def main():
-    n_battles = 10000
-    CONCURRENCY = 2
+    n_battles = 15000
+    CONCURRENCY = 5
     
     team_builder = RandomTeamFromPool(TEAMS_LIST)
     
@@ -186,8 +179,8 @@ async def main():
         max_concurrent_battles=CONCURRENCY
     )
     
-    # RIVAL: Carregado da pasta legada
-    rival = InstinctBot(
+    # RIVAL: MaxDamagePlayer restaurado
+    rival = MaxDamagePlayer(
         battle_format="gen9nationaldex", 
         server_configuration=LOCAL_CONFIG,
         team=team_builder,

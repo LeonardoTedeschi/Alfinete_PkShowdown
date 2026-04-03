@@ -71,35 +71,35 @@ class BlueBrain:
             instinct_intent = "ATTACK"
         
         instinct_idx = self.actions.index(instinct_intent)
+        q_instinct = self.q_table[state][instinct_idx]
+        
+        best_action_idx = np.argmax(self.q_table[state])
+        best_q_value = self.q_table[state][best_action_idx]
 
-        # Exploração aleatória controlada pelo Epsilon
-        if random.random() < self.epsilon:
-            action_idx = random.choice(range(len(self.actions)))
-        else:
-            q_instinct = self.q_table[state][instinct_idx]
-            best_action_idx = np.argmax(self.q_table[state])
-            best_q_value = self.q_table[state][best_action_idx]
-
-            # Regra 1: Se o instinto for positivo ou neutro (0.0)
-            if q_instinct >= 0:
-                # Checa as demais opções. Se houver uma mais positiva, escolhe ela.
-                if best_q_value > q_instinct:
-                    action_idx = best_action_idx
-                # Se não houver (ou houver empate), usamos a do instinto.
-                else:
-                    action_idx = instinct_idx
-            
-            # Regra 2: Se o instinto for negativo
+        # 1. O Instinto é neutro ou positivo (Ainda é viável)
+        if q_instinct >= 0:
+            # Existe uma estratégia mapeada que é comprovadamente melhor que o instinto?
+            if best_q_value > q_instinct:
+                action_idx = best_action_idx
             else:
-                # Buscamos outra opção com recompensa mais alta (que não seja negativa)
-                if best_q_value >= 0:
-                    action_idx = best_action_idx
-                # Se não houver nenhuma (todas são negativas), fazemos uma jogada aleatória
-                else:
-                    available_indices = [i for i in range(len(self.actions)) if i != instinct_idx]
-                    action_idx = random.choice(available_indices) if available_indices else instinct_idx
+                action_idx = instinct_idx
+                
+        # 2. O Instinto provou ser negativo (Fracasso mapeado)
+        else:
+            # Existe alguma outra estratégia na matriz que não seja negativa?
+            if best_q_value >= 0:
+                action_idx = best_action_idx
+                
+            # 3. GATILHO DE EXPLORAÇÃO 100% ATIVADO
+            # Tudo que sabemos (incluindo o instinto e a melhor opção) é negativo (< 0).
+            # O bot está encurralado neste estado. Força uma ação aleatória para achar uma saída.
+            else:
+                available_indices = [i for i in range(len(self.actions)) if i != instinct_idx]
+                action_idx = random.choice(available_indices) if available_indices else instinct_idx
 
+        # Mantemos a variável epsilon intacta apenas para não quebrar a função de salvar/carregar
         self.epsilon = max(self.min_epsilon, self.epsilon * self.epsilon_decay)
+        
         return self.actions[action_idx]
 
     def _get_root_path(self, filename):
