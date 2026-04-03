@@ -80,13 +80,43 @@ class InstinctCore:
         if opp_speed > my_speed * 1.1: return "SLOWER"
         return "TIED"
 
+    # --- NOVOS EXTRATORES DE INTELIGÊNCIA ---
+
+    def get_status_state(self, pokemon):
+        if not pokemon or pokemon.fainted: return "CLEAN"
+        if pokemon.status: return "AFFLICTED"
+        return "CLEAN"
+
+    def get_boost_state(self, pokemon):
+        if not pokemon or not pokemon.boosts: return "NEUTRAL"
+        # Verifica as estatísticas principais de combate
+        relevant_boosts = [v for k, v in pokemon.boosts.items() if k in ['atk', 'def', 'spa', 'spd', 'spe']]
+        if not relevant_boosts: return "NEUTRAL"
+        
+        # Se houver qualquer buff positivo, é uma ameaça ofensiva/defensiva
+        if any(v > 0 for v in relevant_boosts): return "BUFFED"
+        # Se só houver quedas, está enfraquecido
+        if any(v < 0 for v in relevant_boosts): return "DEBUFF"
+        
+        return "NEUTRAL"
+
+    def get_hazard_state(self, side_conditions):
+        if not side_conditions: return "CLEAR"
+        cond_strings = [str(k).upper() for k in side_conditions.keys()]
+        hazards = ['STEALTH_ROCK', 'SPIKES', 'TOXIC_SPIKES', 'STICKY_WEB']
+        
+        if any(h in cond for cond in cond_strings for h in hazards):
+            return "SET"
+        return "CLEAR"
+
     def get_state(self, battle):
-        """Gera a tupla de 6 atributos de forma segura."""
+        """Gera a tupla expandida (12 dimensões táticas)."""
         active = battle.active_pokemon
         opponent = battle.opponent_active_pokemon
 
         if not active or not opponent:
-            return ("UTILITY", "UTILITY", "NEUTRAL", "FULL", "NORMAL", "TIED")
+            return ("UTILITY", "UTILITY", "NEUTRAL", "FULL", "NORMAL", "TIED", 
+                    "CLEAN", "CLEAN", "NEUTRAL", "NEUTRAL", "CLEAR", "CLEAR")
         
         my_role = self.get_role(active).name
         opp_role = self.get_role(opponent).name
@@ -98,7 +128,13 @@ class InstinctCore:
             matchup,
             self.get_hp_bucket(active),
             self.get_weather_state(battle),
-            self.get_speed_tier(battle)
+            self.get_speed_tier(battle),
+            self.get_status_state(active),              # Meu status (Para TEAM_CURE)
+            self.get_status_state(opponent),            # Status rival (Evita Toxic desnecessário)
+            self.get_boost_state(active),               # Meu Boost (Para bater mais forte)
+            self.get_boost_state(opponent),             # Boost rival (Gatilho para STAT_CLEAN/Haze)
+            self.get_hazard_state(battle.side_conditions),         # Meu campo (Gatilho para CLEAN/Defog)
+            self.get_hazard_state(battle.opponent_side_conditions) # Campo inimigo (Gatilho para HAZARD)
         )
 
     # =========================================================================
