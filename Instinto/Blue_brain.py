@@ -4,7 +4,7 @@ import os
 import random
 
 class BlueBrain:
-    def __init__(self, alpha=0.1, gamma=0.95, epsilon=0.4, min_epsilon=0.01, decay=0.99995):
+    def __init__(self, alpha=0.2, gamma=0.95, epsilon=0.4, min_epsilon=0.01, decay=0.99995):
         self.alpha = alpha
         self.gamma = gamma
         self.epsilon = epsilon
@@ -23,7 +23,7 @@ class BlueBrain:
 
     def calculate_reward(self, battle, history):
         R_WIN = 2000.0   
-        R_LOSE = -1500.0 
+        R_LOSE = -3500.0 
         R_KILL = 300.0   
         R_DEATH = -150.0 
         R_SWITCH_PENALTY = -20.0
