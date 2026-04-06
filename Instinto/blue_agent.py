@@ -11,8 +11,12 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 repo_root = os.path.abspath(os.path.join(current_dir, '..'))
 suporte_treinamento_dir = os.path.join(repo_root, 'Suporte_Treinamento')
 
+versao_antiga_dir = os.path.join(current_dir, 'Vesão antiga')
+
 if current_dir not in sys.path: sys.path.append(current_dir)
 if suporte_treinamento_dir not in sys.path: sys.path.append(suporte_treinamento_dir)
+if versao_antiga_dir not in sys.path: sys.path.append(versao_antiga_dir)
+if clone_gen1_dir not in sys.path: sys.path.append(clone_gen1_dir)
 
 logging.basicConfig(level=logging.ERROR)
 logging.getLogger("poke-env").setLevel(logging.ERROR) 
@@ -27,8 +31,11 @@ try:
     from Suporte.teams import RandomTeamFromPool, TEAMS_LIST
     import Suporte.plot_graph as plot_graph
     
-    # Importação restaurada para o MaxDamage
-    from Suporte.rivals import MaxDamagePlayer
+    # === ARSENAL DE RIVAIS ===
+    from Suporte.rivals import MaxDamagePlayer 
+    from instinct_bot import InstinctBot
+    from clone_agent import BlueClone     
+    
 except ImportError as e:
     print(f"[ERRO] Falha de importação: {e}")
     sys.exit(1)
@@ -167,7 +174,7 @@ class BLUE(Player):
 # BLOCO DE EXECUÇÃO PADRÃO
 # =============================================================================
 async def main():
-    n_battles = 15000
+    n_battles = 20000
     CONCURRENCY = 5
     
     team_builder = RandomTeamFromPool(TEAMS_LIST)
@@ -179,8 +186,21 @@ async def main():
         max_concurrent_battles=CONCURRENCY
     )
     
-    # RIVAL: MaxDamagePlayer restaurado
-    rival = MaxDamagePlayer(
+    '''rival = MaxDamagePlayer(
+        battle_format="gen9nationaldex", 
+        server_configuration=LOCAL_CONFIG,
+        team=team_builder,
+        max_concurrent_battles=CONCURRENCY
+    )
+
+    #rival = InstinctBot(
+    #    battle_format="gen9nationaldex", 
+    #    server_configuration=LOCAL_CONFIG,
+    #    team=team_builder,
+    #    max_concurrent_battles=CONCURRENCY
+    #)'''
+
+    rival = BlueClone(
         battle_format="gen9nationaldex", 
         server_configuration=LOCAL_CONFIG,
         team=team_builder,
