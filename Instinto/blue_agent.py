@@ -10,13 +10,14 @@ import warnings
 current_dir = os.path.dirname(os.path.abspath(__file__))
 repo_root = os.path.abspath(os.path.join(current_dir, '..'))
 suporte_treinamento_dir = os.path.join(repo_root, 'Suporte_Treinamento')
+clone_gen1_dir = os.path.join(current_dir, 'clone_gen1')
 
 versao_antiga_dir = os.path.join(current_dir, 'Vesão antiga')
 
 if current_dir not in sys.path: sys.path.append(current_dir)
 if suporte_treinamento_dir not in sys.path: sys.path.append(suporte_treinamento_dir)
 if versao_antiga_dir not in sys.path: sys.path.append(versao_antiga_dir)
-if clone_gen1_dir not in sys.path: sys.path.append(clone_gen1_dir)
+#if clone_gen1_dir not in sys.path: sys.path.append(clone_gen1_dir)
 
 logging.basicConfig(level=logging.ERROR)
 logging.getLogger("poke-env").setLevel(logging.ERROR) 
@@ -34,7 +35,7 @@ try:
     # === ARSENAL DE RIVAIS ===
     from Suporte.rivals import MaxDamagePlayer 
     from instinct_bot import InstinctBot
-    from clone_agent import BlueClone     
+    from clone_gen1.clone_agent import BlueClone
     
 except ImportError as e:
     print(f"[ERRO] Falha de importação: {e}")
@@ -145,19 +146,25 @@ class BLUE(Player):
                 if last_state and last_action:
                     self.brain.update_feedback(current_state, last_state, last_action, reward)
 
+            current_state = self.core.get_state(battle)
             instinct_intent = self.core.get_intent(battle)
-            final_decision = self.brain.decide_action(current_state, instinct_intent)
+            
+            # Action Masking: Restringe a visão do cérebro apenas ao que é possível
+            available_actions = self.core.get_available_actions(battle)
+            final_decision = self.brain.decide_action(current_state, instinct_intent, available_actions)
 
             opp_species = battle.opponent_active_pokemon.species if battle.opponent_active_pokemon else None
 
+            # Mantém o histórico do turno intacto para o cálculo de recompensa no turno seguinte
             self.battle_history[battle.battle_tag] = {
                 'state': current_state,
-                'last_action': final_decision,
+                'last_action': final_decision, 
                 'my_fainted': len([m for m in battle.team.values() if m.fainted]),
                 'opp_fainted': len([m for m in battle.opponent_team.values() if m.fainted]),
                 'last_opp_species': opp_species 
             }
 
+            # Execução mecânica
             execution_list = [final_decision, instinct_intent, "ATTACK", "SWITCH"]
             best_object = self.core.get_best_execution_object(execution_list, battle)
 
@@ -185,27 +192,28 @@ async def main():
         team=team_builder,
         max_concurrent_battles=CONCURRENCY
     )
-    
-    '''rival = MaxDamagePlayer(
+
+    rival = MaxDamagePlayer(
         battle_format="gen9nationaldex", 
         server_configuration=LOCAL_CONFIG,
         team=team_builder,
         max_concurrent_battles=CONCURRENCY
     )
 
-    #rival = InstinctBot(
-    #    battle_format="gen9nationaldex", 
-    #    server_configuration=LOCAL_CONFIG,
-    #    team=team_builder,
-    #    max_concurrent_battles=CONCURRENCY
-    #)'''
-
+    '''rival = InstinctBot(
+        battle_format="gen9nationaldex", 
+        server_configuration=LOCAL_CONFIG,
+        team=team_builder,
+        max_concurrent_battles=CONCURRENCY
+    )
+    
     rival = BlueClone(
         battle_format="gen9nationaldex", 
         server_configuration=LOCAL_CONFIG,
         team=team_builder,
         max_concurrent_battles=CONCURRENCY
     )
+    '''
     
     print(f"{'='*40}")
     print(f" SESSÃO: {bot.paths['id']}")

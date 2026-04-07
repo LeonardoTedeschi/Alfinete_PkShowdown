@@ -4,7 +4,7 @@ import os
 import random
 
 class BlueBrain:
-    def __init__(self, alpha=0.2, gamma=0.95, epsilon=0.4, min_epsilon=0.01, decay=0.99995):
+    def __init__(self, alpha=0.1, gamma=0.95, epsilon=0.0, min_epsilon=0.0, decay=1.0):
         self.alpha = alpha
         self.gamma = gamma
         self.epsilon = epsilon
@@ -13,20 +13,20 @@ class BlueBrain:
         
         self.q_table = {}
         
-        # As 12 Ações Exatas do Instinto (Sem agrupamentos)
+        # As 13 Ações Definitivas do Competitivo
         self.actions = [
             "ATTACK", "SWITCH", "BUFF", "DEBUFF", "STATUS", "PROTECT", 
-            "HAZARD", "HEAL", "HEAL_50", "TEAM_CURE", "CLEAN", "STAT_CLEAN"
+            "HAZARD", "CLEAN_HAZARD", "HEAL", "HEAL_STATUS", "STAT_CLEAN",
+            "PHAZE", "FIELD_CONTROL"
         ]
 
         self.load_model("blue_brain.pkl")
 
     def calculate_reward(self, battle, history):
         R_WIN = 2000.0   
-        R_LOSE = -3500.0 
-        R_KILL = 300.0   
-        R_DEATH = -150.0 
-        R_SWITCH_PENALTY = -20.0
+        R_LOSE = -4000.0 
+        R_KILL = 200.0   
+        R_DEATH = -200.0
         
         reward = 0
         if battle.won: reward += R_WIN
@@ -44,8 +44,6 @@ class BlueBrain:
         
         if new_kills > 0: reward += (R_KILL * new_kills)
         if new_deaths > 0: reward += (R_DEATH * new_deaths)
-        
-        if last_action == "SWITCH": reward += R_SWITCH_PENALTY
 
         return reward
 
@@ -63,45 +61,49 @@ class BlueBrain:
             new_val = (1 - self.alpha) * old_val + self.alpha * (reward + self.gamma * next_max)
             self.q_table[last_state][action_idx] = new_val
 
-    def decide_action(self, state, instinct_intent):
-        if state not in self.q_table:
-            self.q_table[state] = np.zeros(len(self.actions))
+    def decide_action(self, state, instinct_intent, available_actions):
+        # Proteção: Garante que o Cérebro sempre escolha algo que está na lista disponível
+        if instinct_intent not in available_actions:
+            instinct_intent = available_actions[0] if available_actions else "ATTACK"
 
-        if instinct_intent not in self.actions:
-            instinct_intent = "ATTACK"
+        # Se o estado for inédito, segue o instinto
+        if state not in self.q_table:
+            return instinct_intent
+
+        # Converte a lista de strings para os índices reais da Q-Table
+        available_indices = [self.actions.index(act) for act in available_actions if act in self.actions]
+        if not available_indices: return instinct_intent # Fallback
         
         instinct_idx = self.actions.index(instinct_intent)
-        q_instinct = self.q_table[state][instinct_idx]
         
-        best_action_idx = np.argmax(self.q_table[state])
-        best_q_value = self.q_table[state][best_action_idx]
+        # Filtra a Q-Table para enxergar APENAS as ações permitidas neste turno
+        valid_q_values = {idx: self.q_table[state][idx] for idx in available_indices}
+        
+        q_instinct = valid_q_values.get(instinct_idx, 0.0)
+        
+        # Acha a melhor opção DENTRO das disponíveis
+        best_action_idx = max(valid_q_values, key=valid_q_values.get)
+        best_q_value = valid_q_values[best_action_idx]
 
-        # 1. O Instinto é neutro ou positivo (Ainda é viável)
+        # Lógica de Tomada de Decisão baseada na Recompensa
         if q_instinct >= 0:
-            # Existe uma estratégia mapeada que é comprovadamente melhor que o instinto?
-            if best_q_value > q_instinct:
-                action_idx = best_action_idx
-            else:
-                action_idx = instinct_idx
-                
-        # 2. O Instinto provou ser negativo (Fracasso mapeado)
+            # Se o instinto é positivo/neutro, só desobedece se a matriz tiver uma ideia melhor
+            action_idx = best_action_idx if best_q_value > q_instinct else instinct_idx
         else:
-            # Existe alguma outra estratégia na matriz que não seja negativa?
+            # Se o instinto é negativo, tenta a melhor ideia da matriz
             if best_q_value >= 0:
                 action_idx = best_action_idx
-                
-            # 3. GATILHO DE EXPLORAÇÃO 100% ATIVADO
-            # Tudo que sabemos (incluindo o instinto e a melhor opção) é negativo (< 0).
-            # O bot está encurralado neste estado. Força uma ação aleatória para achar uma saída.
+            # Se a melhor ideia da matriz TAMBÉM é negativa, estamos em um beco sem saída. Exploração Reativa!
             else:
-                available_indices = [i for i in range(len(self.actions)) if i != instinct_idx]
-                action_idx = random.choice(available_indices) if available_indices else instinct_idx
-
-        # Mantemos a variável epsilon intacta apenas para não quebrar a função de salvar/carregar
+                options_to_explore = [i for i in available_indices if i != instinct_idx]
+                action_idx = random.choice(options_to_explore) if options_to_explore else instinct_idx
+        
+        # Lógica de Epsilon mantida apenas para evitar quebra do arquivo .pkl
         self.epsilon = max(self.min_epsilon, self.epsilon * self.epsilon_decay)
         
         return self.actions[action_idx]
 
+    
     def _get_root_path(self, filename):
         current_dir = os.path.dirname(os.path.abspath(__file__))
         return os.path.join(current_dir, filename)

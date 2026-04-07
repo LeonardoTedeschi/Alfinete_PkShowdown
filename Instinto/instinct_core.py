@@ -30,11 +30,14 @@ class MoveCategory(Enum):
     HAZARD = 5
     RECOVERY = 6
     WEATHER = 7
-    TEAM_CURE = 8      
+    CLEAN_HAZARD = 8      
     PROTECT = 9        
     DEBUFF = 10        
     STAT_CLEAN = 11
-    UNKNOWN = 12
+    HEAL_STATUS = 12
+    PHAZE = 13
+    FIELD_CONTROL = 14
+    UNKNOWN = 15
 
 # =============================================================================
 # 2. O CÉREBRO ESPECIALISTA (CORE)
@@ -58,6 +61,14 @@ class InstinctCore:
         if hp >= 0.8: return "FULL"
         if hp >= 0.5: return "MED"
         if hp >= 0.2: return "LOW"
+        return "CRIT"
+
+    def get_opp_hp_bucket(self, pokemon):
+        """Discretização reduzida (3 estados) para otimização da Q-Table."""
+        if not pokemon or pokemon.fainted: return "DEAD"
+        hp = pokemon.current_hp_fraction
+        if hp >= 0.5: return "HIGH"
+        if hp >= 0.2: return "MID"
         return "CRIT"
 
     def get_weather_state(self, battle):
@@ -109,13 +120,48 @@ class InstinctCore:
             return "SET"
         return "CLEAR"
 
+    def get_available_actions(self, battle):
+        #Retorna uma lista de strings exatas do Cérebro baseadas nas magias disponíveis e possibilidade de troca.
+        available = []
+        
+        # 1. Verifica se pode trocar
+        if battle.available_switches:
+            available.append("SWITCH")
+            
+        # 2. Traduz as magias ativas para as macros do Cérebro
+        if battle.available_moves:
+            for move in battle.available_moves:
+                cat = self.classify_move(move)
+                
+                if cat in [MoveCategory.ATTACK_PHYSICAL, MoveCategory.ATTACK_SPECIAL]: action = "ATTACK"
+                elif cat == MoveCategory.SETUP_BUFF: action = "BUFF"
+                elif cat == MoveCategory.STATUS_CTRL: action = "STATUS"
+                elif cat == MoveCategory.RECOVERY: action = "HEAL"
+                elif cat == MoveCategory.CLEAN_HAZARD: action = "CLEAN_HAZARD"
+                elif cat == MoveCategory.PROTECT: action = "PROTECT"
+                elif cat == MoveCategory.DEBUFF: action = "DEBUFF"
+                elif cat == MoveCategory.STAT_CLEAN: action = "STAT_CLEAN"
+                elif cat == MoveCategory.HEAL_STATUS: action = "HEAL_STATUS"
+                elif cat == MoveCategory.PHAZE: action = "PHAZE"
+                elif cat == MoveCategory.FIELD_CONTROL: action = "FIELD_CONTROL"
+                elif cat == MoveCategory.HAZARD: action = "HAZARD"
+                else: action = "ATTACK"
+                if action not in available:
+                    available.append(action)
+                    
+        # Segurança extrema: se tudo falhar, obriga a lutar
+        if not available:
+            available.append("ATTACK")
+            
+        return available
+
     def get_state(self, battle):
-        """Gera a tupla expandida (12 dimensões táticas)."""
+        """Gera a tupla de dimensões táticas com controle de cardinalidade."""
         active = battle.active_pokemon
         opponent = battle.opponent_active_pokemon
 
         if not active or not opponent:
-            return ("UTILITY", "UTILITY", "NEUTRAL", "FULL", "NORMAL", "TIED", 
+            return ("UTILITY", "UTILITY", "NEUTRAL", "FULL", "HIGH", "NORMAL", "TIED", 
                     "CLEAN", "CLEAN", "NEUTRAL", "NEUTRAL", "CLEAR", "CLEAR")
         
         my_role = self.get_role(active).name
@@ -126,15 +172,16 @@ class InstinctCore:
             my_role,
             opp_role,
             matchup,
-            self.get_hp_bucket(active),
+            self.get_hp_bucket(active),                 
+            self.get_opp_hp_bucket(opponent),          
             self.get_weather_state(battle),
             self.get_speed_tier(battle),
-            self.get_status_state(active),              # Meu status (Para TEAM_CURE)
-            self.get_status_state(opponent),            # Status rival (Evita Toxic desnecessário)
-            self.get_boost_state(active),               # Meu Boost (Para bater mais forte)
-            self.get_boost_state(opponent),             # Boost rival (Gatilho para STAT_CLEAN/Haze)
-            self.get_hazard_state(battle.side_conditions),         # Meu campo (Gatilho para CLEAN/Defog)
-            self.get_hazard_state(battle.opponent_side_conditions) # Campo inimigo (Gatilho para HAZARD)
+            self.get_status_state(active),              
+            self.get_status_state(opponent),            
+            self.get_boost_state(active),               
+            self.get_boost_state(opponent),             
+            self.get_hazard_state(battle.side_conditions),         
+            self.get_hazard_state(battle.opponent_side_conditions) 
         )
 
     # =========================================================================
@@ -216,22 +263,46 @@ class InstinctCore:
         
         return int(estimated)
 
-    def classify_move(self, move) -> MoveCategory:
-        mid = move.id
-        if mid in ['protect', 'detect', 'banefulbunker', 'spikyshield', 'kingsshield', 'silktrap']: return MoveCategory.PROTECT
-        if mid in ['haze', 'clearsmog']: return MoveCategory.STAT_CLEAN
-        if mid in ['healbell', 'aromatherapy']: return MoveCategory.TEAM_CURE
-        if mid in ['snarl', 'strugglebug', 'confusray', 'fakeout', 'tickle', 'nobleroar', 'charm', 'partingshot']: return MoveCategory.DEBUFF
+    def classify_move(self, move):
+        move_id = move.id
 
-        if move.category.name == 'PHYSICAL': return MoveCategory.ATTACK_PHYSICAL
-        if move.category.name == 'SPECIAL': return MoveCategory.ATTACK_SPECIAL
-        
-        if move.heal > 0 or mid in ['roost', 'recover', 'synthesis', 'softboiled', 'wish', 'moonlight', 'morning sun', 'slackoff']: return MoveCategory.RECOVERY
-        if move.weather or mid in ['raindance', 'sunnyday', 'sandstorm', 'hail', 'snowscape']: return MoveCategory.WEATHER
-        if mid in ['stealthrock', 'spikes', 'toxicspikes', 'stickyweb', 'defog', 'rapidspin', 'mortalspin', 'tidyup']: return MoveCategory.HAZARD
-        if move.boosts and move.target == 'self': return MoveCategory.SETUP_BUFF
-        if move.status or (move.boosts and move.target == 'normal'): return MoveCategory.STATUS_CTRL
-            
+        #Mapeamento Manual Prioritário (Mecânicas Específicas)
+        if move_id in ['haze', 'clearsmog']:
+            return MoveCategory.STAT_CLEAN
+        if move_id in ['aromatherapy', 'healbell', 'junglehealing']:
+            return MoveCategory.HEAL_STATUS
+        if move_id in ['roar', 'whirlwind', 'dragontail', 'circlethrow']:
+            return MoveCategory.PHAZE
+        if move_id in ['raindance', 'sunnyday', 'sandstorm', 'hail', 'snowscape', 'trickroom', 'tailwind', 'electricterrain', 'grassyterrain', 'psychicterrain', 'mistyterrain']:
+            return MoveCategory.FIELD_CONTROL
+        if move_id in ['defog', 'rapidspin', 'mortalspin', 'courtchange']:
+            return MoveCategory.CLEAN_HAZARD
+        if move_id in ['stealthrock', 'spikes', 'toxicspikes', 'stickyweb']:
+            return MoveCategory.HAZARD
+        if move_id in ['protect', 'detect', 'spikyshield', 'kingsshield', 'banefulbunker', 'burningbulwark', 'silktrap', 'safeguard']:
+            return MoveCategory.PROTECT
+        if move_id in ['recover', 'roost', 'moonlight', 'slackoff', 'morningsun', 'synthesis', 'softboiled', 'milkdrink', 'shoreup', 'strengthsap']:
+            return MoveCategory.RECOVERY
+
+        #Classificação Dinâmica (poke-env)
+        if move.category.name == "STATUS":
+            if move.heal: 
+                return MoveCategory.RECOVERY
+            if move.status: 
+                return MoveCategory.STATUS_CTRL
+            if move.boosts:
+                if any(v > 0 for v in move.boosts.values()):
+                    return MoveCategory.SETUP_BUFF
+                if any(v < 0 for v in move.boosts.values()):
+                    return MoveCategory.DEBUFF
+            return MoveCategory.STATUS_CTRL 
+
+        #Ataques de Dano
+        if move.category.name == "PHYSICAL":
+            return MoveCategory.ATTACK_PHYSICAL
+        if move.category.name == "SPECIAL":
+            return MoveCategory.ATTACK_SPECIAL
+
         return MoveCategory.UNKNOWN
 
     def is_move_useless(self, move, opp_pokemon, battle):
@@ -595,10 +666,9 @@ class InstinctCore:
             priority_list = ["ATTACK"]
 
         for action in priority_list:
-            if action in ["HEAL", "HEAL_50"]:
-                threshold = 0.55 if action == "HEAL_50" else (0.85 if self.is_threatening(active, opponent) else 0.55)
+            if action == "HEAL":
+                threshold = 0.85 if self.is_threatening(active, opponent) else 0.55
                 if active.current_hp_fraction <= threshold:
-                    # PROCURA APENAS NOS MOVIMENTOS DISPONÍVEIS (Evita golpes sem PP ou bloqueados por Choice)
                     move = next((m for m in battle.available_moves if self.classify_move(m) == MoveCategory.RECOVERY), None)
                     if move: return move
 
@@ -611,11 +681,21 @@ class InstinctCore:
                 move = next((m for m in battle.available_moves if self.classify_move(m) == MoveCategory.HAZARD and m.id not in ['defog', 'rapidspin']), None)
                 if move and not self.is_hazard_already_set(move, battle): return move
 
-            if action in ["CLEAN", "STAT_CLEAN"]:
-                 move = next((m for m in battle.available_moves if self.classify_move(m) in [MoveCategory.STAT_CLEAN, MoveCategory.HAZARD] and m.id in ['defog', 'rapidspin', 'haze', 'clearsmog']), None)
-                 if move:
-                     if move.id in ['defog', 'rapidspin'] and battle.side_conditions: return move
-                     if move.id in ['haze', 'clearsmog'] and any(v > 0 for v in opponent.boosts.values()): return move
+            if action == "HEAL_STATUS":
+                move = next((m for m in battle.available_moves if self.classify_move(m) == MoveCategory.HEAL_STATUS), None)
+                if move: return move
+
+            if action == "STAT_CLEAN":
+                move = next((m for m in battle.available_moves if self.classify_move(m) == MoveCategory.STAT_CLEAN), None)
+                if move: return move
+
+            if action == "PHAZE":
+                move = next((m for m in battle.available_moves if self.classify_move(m) == MoveCategory.PHAZE), None)
+                if move: return move
+
+            if action == "FIELD_CONTROL":
+                move = next((m for m in battle.available_moves if self.classify_move(m) == MoveCategory.FIELD_CONTROL), None)
+                if move: return move
 
             if action == "ATTACK":
                 # Aceita golpes fixos (Seismic Toss, Foul Play) caso os golpes normais acabem
@@ -639,10 +719,6 @@ class InstinctCore:
             if action == "PROTECT":
                 move = next((m for m in battle.available_moves if self.classify_move(m) == MoveCategory.PROTECT), None)
                 if move: return move
-
-            if action == "TEAM_CURE":
-                move = next((m for m in battle.available_moves if self.classify_move(m) == MoveCategory.TEAM_CURE), None)
-                if move and any(mon.status for mon in battle.team.values()): return move
 
             if action == "DEBUFF":
                 move = next((m for m in battle.available_moves if self.classify_move(m) == MoveCategory.DEBUFF), None)
