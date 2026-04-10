@@ -3,66 +3,83 @@ import logging
 import sys
 import os
 
+# Configuração de caminhos para mapear a estrutura do projeto
+current_dir = os.path.dirname(os.path.abspath(__file__))
+repo_root = os.path.abspath(os.path.join(current_dir, '..'))
+if current_dir not in sys.path: sys.path.append(current_dir)
+if repo_root not in sys.path: sys.path.append(repo_root)
+
 # Importações do Poke-env
 from poke_env import ServerConfiguration, AccountConfiguration
 
-# Importação do Nosso Bot de Instinto
-from instinct_bot import InstinctBot
-
-# Importação do Gerenciador de Times (Do seu arquivo teams.py)
-from teams import RandomTeamFromPool, TEAMS_LIST
+# Importação do Agente Híbrido (RL + Instinto)
+try:
+    from blue_agent import BLUE
+    from Suporte.teams import RandomTeamFromPool, TEAMS_LIST
+except ImportError as e:
+    print(f"[ERRO] Falha de importação: {e}")
+    print("Certifique-se de que a pasta 'Suporte' e 'blue_agent.py' estão acessíveis.")
+    sys.exit(1)
 
 # Configuração para ignorar logs excessivos
 logging.getLogger("poke-env").setLevel(logging.ERROR)
 
 # Configuração do Servidor Local
-LOCAL_CONFIG = ServerConfiguration("ws://localhost:8000/showdown/websocket", "http://localhost:8000/")
+LOCAL_CONFIG = ServerConfiguration("ws://127.0.0.1:8000/showdown/websocket", "http://127.0.0.1:8000/")
 
 async def main():
     print("\n=================================================")
-    print("     D O J O   -   HUMANO VS INSTINCT (POOL)")
+    print("     D O J O   -   HUMANO VS AGENTE BLUE (V6)")
     print("=================================================")
 
     # 1. Configurar Identidade
-    bot_username = "InstinctBot"
+    bot_username = "BlueBot"
     bot_config = AccountConfiguration(bot_username, None)
 
-    # 2. Criar o Bot usando o Pool de Times
-    # O RandomTeamFromPool vai escolher um time aleatório a cada batalha
+    # 2. Criar o Bot
     print(f">>> Carregando pool com {len(TEAMS_LIST)} times disponíveis.")
     
-    bot = InstinctBot(
+    bot = BLUE(
         account_configuration=bot_config,
         server_configuration=LOCAL_CONFIG,
         battle_format="gen9nationaldex",
-        team=RandomTeamFromPool(TEAMS_LIST) # <--- AQUI ESTÁ A MUDANÇA
+        team=RandomTeamFromPool(TEAMS_LIST)
     )
 
-    print(">>> Bot Inicializado com Sucesso.")
-    print(">>> Lógica de Instinto: ATIVADA.")
+    print(">>> Agente BLUE Inicializado.")
+    print(">>> Módulos carregados: Matriz 4D (Instinto) + Q-Table (Cérebro).")
 
     # 3. Instruções
     print("\n--- COMO LUTAR ---")
-    print("1. Certifique-se que o servidor local está rodando.")
-    print(f"2. Procure o usuário '{bot_username}' no Lobby (http://localhost:8000).")
+    print("1. Certifique-se que o servidor Showdown local está rodando.")
+    print(f"2. Procure o usuário '{bot_username}' no Lobby (http://127.0.0.1:8000).")
     print("3. Desafie para o formato: [Gen 9] National Dex")
-    print("4. OBS: O Bot trocará de time a cada batalha aleatoriamente.")
-    print("\n>>> O BOT ESTÁ ESPERANDO SEU DESAFIO... (Ctrl+C para sair)")
+    print("4. O bot aprenderá e salvará a Q-Table ao fim de cada partida.")
+    print("\n>>> AGUARDANDO DESAFIO... (Ctrl+C para sair)")
 
-    # 4. Loop de Espera
+    # 4. Loop de Batalha Manual
     while True:
         try:
-            # Aceita 1 desafio, joga, e volta para o loop para trocar de time na próxima
             await bot.accept_challenges(opponent=None, n_challenges=1)
-            print("\n>>> Batalha concluída! Preparando novo time para a próxima...")
+            print("\n>>> Batalha concluída!")
+            
+            # Processa o resultado final (vitória/derrota) e salva a matriz na hora
+            bot.check_finished_battles()
+            bot.save_brain_silently()
+            print(">>> Progresso do Cérebro (Q-Table) salvo. Preparando próxima luta...")
+            
         except KeyboardInterrupt:
-            print("\n>>> Encerrando o Bot...")
+            print("\n>>> Encerrando o bot e garantindo salvamento do progresso...")
+            bot.check_finished_battles()
+            bot.save_brain_silently()
             break
         except Exception as e:
-            print(f"Erro na conexão ou batalha: {e}")
+            print(f"Erro durante a conexão ou batalha: {e}")
             await asyncio.sleep(2)
 
 if __name__ == "__main__":
+    if sys.platform == 'win32':
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
