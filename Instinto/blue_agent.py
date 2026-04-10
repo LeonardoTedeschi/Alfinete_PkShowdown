@@ -5,19 +5,21 @@ import time
 import logging
 import csv
 import warnings
+import traceback
 
 # --- 1. CONFIGURAÇÃO DE CAMINHOS ---
 current_dir = os.path.dirname(os.path.abspath(__file__))
 repo_root = os.path.abspath(os.path.join(current_dir, '..'))
 suporte_treinamento_dir = os.path.join(repo_root, 'Suporte_Treinamento')
-clone_gen1_dir = os.path.join(current_dir, 'clone_gen1')
 
-versao_antiga_dir = os.path.join(current_dir, 'Vesão antiga')
+# ADICIONE ESTA LINHA: Mapeia a pasta exata onde o bot antigo está
+pasta_antiga = os.path.join(current_dir, 'Vesão antiga') 
 
 if current_dir not in sys.path: sys.path.append(current_dir)
 if suporte_treinamento_dir not in sys.path: sys.path.append(suporte_treinamento_dir)
-if versao_antiga_dir not in sys.path: sys.path.append(versao_antiga_dir)
-#if clone_gen1_dir not in sys.path: sys.path.append(clone_gen1_dir)
+
+# ADICIONE ESTA LINHA: Obriga o Python a ler o que tem dentro da pasta
+if pasta_antiga not in sys.path: sys.path.append(pasta_antiga)
 
 logging.basicConfig(level=logging.ERROR)
 logging.getLogger("poke-env").setLevel(logging.ERROR) 
@@ -34,8 +36,7 @@ try:
     
     # === ARSENAL DE RIVAIS ===
     from Suporte.rivals import MaxDamagePlayer 
-    from instinct_bot import InstinctBot
-    from clone_gen1.clone_agent import BlueClone
+    from instinct_bot import InstinctBot 
     
 except ImportError as e:
     print(f"[ERRO] Falha de importação: {e}")
@@ -46,7 +47,7 @@ BLOCK_SIZE = 500
 
 class BLUE(Player):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        # 1. Cria todas as variáveis de estado PRIMEIRO para evitar Race Conditions
         self.core = InstinctCore()
         self.brain = BlueBrain()
         self.paths = plot_graph.setup_training_files()
@@ -57,6 +58,9 @@ class BLUE(Player):
         self.total_reward_sum = 0.0
         self.block_wins = 0
         self._init_csv()
+        
+        # 2. Conecta ao servidor e se declara pronto POR ÚLTIMO
+        super().__init__(*args, **kwargs)
 
     def _init_csv(self):
         try:
@@ -127,17 +131,19 @@ class BLUE(Player):
         try:
             history = self.battle_history.get(battle.battle_tag, {})
 
+            # Gerenciamento de Troca Forçada
             switch_forced = False
             if isinstance(battle.force_switch, list): switch_forced = any(battle.force_switch)
             else: switch_forced = bool(battle.force_switch)
 
             if switch_forced or (battle.active_pokemon and battle.active_pokemon.fainted):
-                best_switch = self.core.get_best_switch(battle)
+                best_switch = self.core.get_best_switch(battle, history)
                 if best_switch: return self.create_order(best_switch)
                 return self.choose_random_move(battle)
 
             current_state = self.core.get_state(battle)
             
+            # Atualização e Feedback da Q-Table no turno a turno
             if history:
                 reward = self.brain.calculate_reward(battle, history)
                 self.total_reward_sum += reward
@@ -147,42 +153,125 @@ class BLUE(Player):
                     self.brain.update_feedback(current_state, last_state, last_action, reward)
 
             current_state = self.core.get_state(battle)
-            instinct_intent = self.core.get_intent(battle)
+            instinct_intent = self.core.get_instinct_intent(battle)
             
-            # Action Masking: Restringe a visão do cérebro apenas ao que é possível
+            # Action Masking restringe as opções visíveis para o Cérebro
             available_actions = self.core.get_available_actions(battle)
             final_decision = self.brain.decide_action(current_state, instinct_intent, available_actions)
 
             opp_species = battle.opponent_active_pokemon.species if battle.opponent_active_pokemon else None
 
-            # Mantém o histórico do turno intacto para o cálculo de recompensa no turno seguinte
+            active = battle.active_pokemon
+            opp = battle.opponent_active_pokemon
+            
             self.battle_history[battle.battle_tag] = {
                 'state': current_state,
                 'last_action': final_decision, 
+                
+                # NOVO: Tira foto da vida e status de todos no banco para avaliar a troca
+                'team_hp': {m.species: m.current_hp_fraction for m in battle.team.values()},
+                'team_status': {m.species: str(m.status) if m.status else "CLEAN" for m in battle.team.values() if hasattr(m, 'status')},
+                
+                'my_hp_bucket': self.core.get_hp_bucket(battle.active_pokemon),
+                'opp_hp_bucket': self.core.get_opp_hp_bucket(battle.opponent_active_pokemon),
+                'my_status': self.core.get_status_state(battle.active_pokemon),
+                'opp_status': self.core.get_status_state(battle.opponent_active_pokemon),
+                'my_boosts': battle.active_pokemon.boosts.copy() if battle.active_pokemon else {},
+                'my_hazards': self.core.get_hazard_state(battle.side_conditions),
+                'opp_species': opp_species,
                 'my_fainted': len([m for m in battle.team.values() if m.fainted]),
-                'opp_fainted': len([m for m in battle.opponent_team.values() if m.fainted]),
-                'last_opp_species': opp_species 
+                'opp_fainted': len([m for m in battle.opponent_team.values() if m.fainted])
             }
 
-            # Execução mecânica
-            execution_list = [final_decision, instinct_intent, "ATTACK", "SWITCH"]
-            best_object = self.core.get_best_execution_object(execution_list, battle)
 
-            if best_object:
-                return self.create_order(best_object)
+            # =================================================================
+            # EXECUÇÃO MECÂNICA E TRADUÇÃO (Instinto -> Poke-env)
+            # =================================================================
+
+            execution_list = [final_decision, instinct_intent, "ATTACK", "SWITCH"]
+            
+            # Recebe a tupla (Objeto_do_Jogo, Flag_da_Mecânica)
+            execution_result = self.core.get_best_execution_object(execution_list, battle, history)
+            
+            action_obj = execution_result[0]
+            mechanic_flag = execution_result[1]
+
+            if action_obj:
+                # Checagem direta de objeto (Sem importar a classe Move)
+                if action_obj in battle.available_moves:
+                    is_tera = (mechanic_flag == "MEC") and battle.can_tera
+                    is_mega = (mechanic_flag == "MEC") and battle.can_mega_evolve
+                    is_dyna = (mechanic_flag == "MEC") and battle.can_dynamax
+                    is_z = (mechanic_flag == "MEC") and battle.can_z_move
+
+                    # --- INTERCEPTADOR E CORREÇÃO DE Z-MOVES ---
+                    if is_z and battle.active_pokemon.item:
+                        item_str = str(battle.active_pokemon.item).lower()
+                        if item_str.endswith('z'):
+                            crystal_map = {
+                                'normaliumz': 'normal', 'firiumz': 'fire', 'wateriumz': 'water',
+                                'electriumz': 'electric', 'grassiumz': 'grass', 'iciumz': 'ice',
+                                'fightiniumz': 'fighting', 'poisoniumz': 'poison', 'groundiumz': 'ground',
+                                'flyiniumz': 'flying', 'psychiumz': 'psychic', 'buginiumz': 'bug',
+                                'rockiumz': 'rock', 'ghostiumz': 'ghost', 'dragoniumz': 'dragon',
+                                'darkiniumz': 'dark', 'steeliumz': 'steel', 'fairiumz': 'fairy'
+                            }
+                            signature_map = {
+                                'aloraichiumz': 'thunderbolt', 'decidiumz': 'spiritshackle', 
+                                'eeviumz': 'lastresort', 'inciniumz': 'darkestlariat', 
+                                'kommoniumz': 'clangingscales', 'lunaliumz': 'moongeistbeam', 
+                                'lycaniumz': 'stoneedge', 'marshadiumz': 'spectralthief', 
+                                'mewniumz': 'psychic', 'mimikiumz': 'playrough', 
+                                'pikaniumz': 'volttackle', 'pikashuniumz': 'thunderbolt', 
+                                'primariumz': 'sparklingaria', 'snorliumz': 'gigaimpact', 
+                                'solganiumz': 'sunsteelstrike', 'tapuniumz': 'naturesmadness', 
+                                'ultranecroziumz': 'photongeyser'
+                            }
+                            
+                            req_type = crystal_map.get(item_str)
+                            req_move_id = signature_map.get(item_str)
+                            valid_z = None
+                            
+                            if req_type:
+                                if str(action_obj.type).split('.')[-1].lower() != req_type:
+                                    valid_z = next((m for m in battle.available_moves if str(m.type).split('.')[-1].lower() == req_type), None)
+                            elif req_move_id:
+                                if action_obj.id != req_move_id:
+                                    valid_z = next((m for m in battle.available_moves if m.id == req_move_id), None)
+                            
+                            if req_type or req_move_id:
+                                if valid_z:
+                                    action_obj = valid_z 
+                                elif (req_type and str(action_obj.type).split('.')[-1].lower() != req_type) or (req_move_id and action_obj.id != req_move_id):
+                                    is_z = False 
+                            else:
+                                is_z = False 
+
+                    # Disparo da ordem de ataque para o servidor
+                    return self.create_order(
+                        action_obj, 
+                        terastallize=is_tera, 
+                        mega=is_mega, 
+                        z_move=is_z,
+                        dynamax=is_dyna
+                    )
+                else:
+                    # É uma ordem de troca de Pokémon
+                    return self.create_order(action_obj)
             else:
                 return self.choose_random_move(battle)
 
         except Exception as e:
             print(f"[ERRO NO TURNO] {e}")
+            traceback.print_exc()
             return self.choose_random_move(battle)
 
 # =============================================================================
 # BLOCO DE EXECUÇÃO PADRÃO
 # =============================================================================
 async def main():
-    n_battles = 20000
-    CONCURRENCY = 5
+    n_battles = 10000
+    CONCURRENCY = 7
     
     team_builder = RandomTeamFromPool(TEAMS_LIST)
     
@@ -193,27 +282,21 @@ async def main():
         max_concurrent_battles=CONCURRENCY
     )
 
-    rival = MaxDamagePlayer(
-        battle_format="gen9nationaldex", 
-        server_configuration=LOCAL_CONFIG,
-        team=team_builder,
-        max_concurrent_battles=CONCURRENCY
-    )
+    # [FASE 1] - MAX DAMAGE (O Saco de Pancadas Suicida)
+    # rival = MaxDamagePlayer(
+    #     battle_format="gen9nationaldex", 
+    #     server_configuration=LOCAL_CONFIG,
+    #     team=team_builder,
+    #     max_concurrent_battles=CONCURRENCY
+    # )
 
-    '''rival = InstinctBot(
+    # [FASE 2] - INSTINTO SIMPLES (A Ponte Tática)
+    rival = InstinctBot(
         battle_format="gen9nationaldex", 
         server_configuration=LOCAL_CONFIG,
         team=team_builder,
         max_concurrent_battles=CONCURRENCY
     )
-    
-    rival = BlueClone(
-        battle_format="gen9nationaldex", 
-        server_configuration=LOCAL_CONFIG,
-        team=team_builder,
-        max_concurrent_battles=CONCURRENCY
-    )
-    '''
     
     print(f"{'='*40}")
     print(f" SESSÃO: {bot.paths['id']}")
