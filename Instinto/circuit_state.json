@@ -1,0 +1,12 @@
+{
+  "phase": "maxdamage",
+  "opponent": "maxdamage",
+  "n_battles": 10000,
+  "session_number": 5,
+  "brain_filename": "blue_brain.pkl",
+  "frozen_brain": null,
+  "target_wr": 0.75,
+  "patience": 2,
+  "epsilon_override": 0.35,
+  "block_size": 500
+}

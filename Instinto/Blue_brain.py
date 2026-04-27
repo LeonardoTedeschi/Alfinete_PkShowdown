@@ -2,9 +2,13 @@ import numpy as np
 import pickle
 import os
 import random
+import threading
+
+from instinct_core import MatchupState
 
 class BlueBrain:
-    def __init__(self, alpha=0.1, gamma=0.95, epsilon=0.40, min_epsilon=0.05, decay=0.99998):
+    # GAMMA REDUZIDO PARA 0.85: Foca mais no impacto tático presente do que no futuro estocástico distante.
+    def __init__(self, alpha=0.2, gamma=0.85, epsilon=0.40, min_epsilon=0.05, decay=0.85):
         self.alpha = alpha
         self.gamma = gamma
         self.epsilon = epsilon
@@ -12,128 +16,282 @@ class BlueBrain:
         self.epsilon_decay = decay
         
         self.q_table = {}
+        self.visit_counts = {}  
         
-        # V_6: Lista expandida para 18 ações (Ações táticas ramificadas)
-        self.actions = [
+        self._qtable_lock = threading.Lock()
+        
+        self.base_actions = [
             "ATTACK_STRONG", "ATTACK_PREDICTIVE", "ATTACK_PIVOT", "ATTACK_TECH", 
-            "ATTACK_MEC", "BUFF", "STATUS", "HEAL", "CLEAN_HAZARD", 
+            "BUFF", "STATUS", "HEAL", "CLEAN_HAZARD", 
             "PROTECT", "DEBUFF", "STAT_CLEAN", "HEAL_STATUS", "PHAZE", 
             "FIELD_CONTROL", "HAZARD", "SWITCH_DEFENSIVE", "SWITCH_OFFENSIVE"
         ]
+        
+        self.actions = []
+        for act in self.base_actions:
+            self.actions.append(act)
+            if "SWITCH" not in act:
+                self.actions.append(f"{act}_MEC")
 
+        self.current_phase = "maxdamage"
         self.load_model("blue_brain.pkl")
+
+    def enter_phase(self, phase_name):
+        phase_config = {
+            # --- ATUALIZADO: Epsilon mínimo e decay mais lento para manter exploração ---
+            "maxdamage": {"epsilon_start": 0.40, "epsilon_min": 0.15, "decay": 0.92}, 
+            "instinct":  {"epsilon_start": 0.30, "epsilon_min": 0.05, "decay": 0.90}, 
+            "selfplay":  {"epsilon_start": 0.20, "epsilon_min": 0.02, "decay": 0.95}  
+        }
+        
+        if phase_name in phase_config:
+            cfg = phase_config[phase_name]
+            self.epsilon = cfg["epsilon_start"]
+            self.min_epsilon = cfg["epsilon_min"]
+            self.epsilon_decay = cfg["decay"]
+            self.current_phase = phase_name
+            print(f"[CÉREBRO] Entrando na Fase de Aprendizado: {phase_name.upper()} (Eps: {self.epsilon:.2f} -> {self.min_epsilon:.2f})")
 
     def calculate_reward(self, battle, history):
         reward = 0.0
 
-        # 1. OBJETIVO MACRO (Vitoria/Derrota)
-        if battle.won: return 2000.0
-        if battle.lost: return -3000.0
+        if battle.won: return 1000.0
+        if battle.lost: return -1000.0
 
-        # 2. VANTAGEM MATERIAL (Abates e Perdas - Valor Moderado)
+        # --- RECOMPENSAS MACRO ESCALONADAS PARA BAIXO ---
         current_my_fainted = len([m for m in battle.team.values() if m.fainted])
         current_opp_fainted = len([m for m in battle.opponent_team.values() if m.fainted])
         
-        # Conforme sua sugestão, 200 pontos para não ofuscar o resultado final
-        if current_my_fainted > history.get('my_fainted', 0): reward -= 200.0
-        if current_opp_fainted > history.get('opp_fainted', 0): reward += 200.0
+        if current_my_fainted > history.get('my_fainted', 0): reward -= 100.0
+        if current_opp_fainted > history.get('opp_fainted', 0): reward += 100.0
+        if history.get('opp_switched', False): reward += 5.0  
 
-        last_action = history.get('last_action')
+        # --- MICRO-RECOMPENSAS DE SOBREVIVÊNCIA (HP DELTA) ---
         active = battle.active_pokemon
         opp = battle.opponent_active_pokemon
-        core = self.load_instinct_core_temp()
 
-        if last_action in ["SWITCH_DEFENSIVE", "SWITCH_OFFENSIVE"] and active:
-            reward -= 15.0  # Pedágio: Custou um turno
+        my_hp_prev = history.get('my_hp_prev', 0.0)
+        opp_hp_prev = history.get('opp_hp_prev', 0.0)
+        my_hp_curr = active.current_hp_fraction if active else 0.0
+        opp_hp_curr = opp.current_hp_fraction if opp else 0.0
+
+        my_hp_delta = my_hp_curr - my_hp_prev
+        opp_hp_delta = opp_hp_curr - opp_hp_prev
+
+        # --- ATUALIZADO: Recompensas de HP Reduzidas ---
+        if opp_hp_delta < 0: reward += 10.0 * abs(opp_hp_delta)
         
+        if my_hp_delta > 0: reward += 10.0 * my_hp_delta
+        elif my_hp_delta < 0: reward -= 10.0 * abs(my_hp_delta)
 
-        # 4. MICRO-RECOMPENSAS ESTRATÉGICAS (Guia de aprendizado)
-        # Aplicar Status
+        # --- AVALIAÇÃO POSICIONAL DENSA (CREDIT ASSIGNMENT) ---
+        score = 0.0
+
+        my_alive = len([m for m in battle.team.values() if not m.fainted])
+        opp_alive = len([m for m in battle.opponent_team.values() if not m.fainted])
+        
+        # DELTA DE SOBREVIVENTES (Substitui a pontuação estática absoluta)
+        prev_my_alive = history.get('my_alive', my_alive)
+        prev_opp_alive = history.get('opp_alive', opp_alive)
+        alive_delta = (my_alive - opp_alive) - (prev_my_alive - prev_opp_alive)
+        score += alive_delta * 5.0  
+
+        if active and active.status: score -= 5.0
+        if opp and opp.status: score += 5.0
+
+        if hasattr(self, 'core') and self.core:
+            my_hazards = self.core.get_hazard_state(battle.side_conditions)
+            opp_hazards = self.core.get_hazard_state(battle.opponent_side_conditions)
+            if my_hazards == "SET": score -= 5.0
+            if opp_hazards == "SET": score += 10.0
+
+            # RESGATA O MATCHUP DO TURNO PASSADO (Quando a ação foi de fato tomada)
+            matchup = history.get('matchup')
+            if matchup:
+                # Escala de Matchup esmagada para parear com micro-recompensas de HP
+                matchup_score = {
+                    MatchupState.DOMINANT: 10.0,
+                    MatchupState.OFFENSIVE_ADV: 5.0,
+                    MatchupState.VOLATILE: 0.0,
+                    MatchupState.NEUTRAL: 0.0,
+                    MatchupState.DEFENSIVE_ADV: -5.0,
+                    MatchupState.STALEMATE: 0.0,
+                    MatchupState.OFFENSIVE_DIS: -8.0,
+                    MatchupState.DEFENSIVE_DIS: -10.0,
+                    MatchupState.CRITICAL_DIS: -15.0,
+                }
+                score += matchup_score.get(matchup, 0.0)
+
+        reward += score
+
+        last_action_tuple = history.get('last_action')
+        base_action = last_action_tuple[0] if last_action_tuple else None
+        
+        # --- ATUALIZADO: Recompensa de Troca Aumentada ---
+        is_switch = base_action in ["SWITCH_DEFENSIVE", "SWITCH_OFFENSIVE", "ATTACK_PIVOT"]
+        if is_switch and active and opp:
+            if hasattr(self, 'core') and self.core:
+                matchup = self.core.get_matchup_state(active, opp)
+                if matchup in [MatchupState.DOMINANT, MatchupState.OFFENSIVE_ADV]:
+                    reward += 10.0   
+                elif matchup in [MatchupState.CRITICAL_DIS, MatchupState.DEFENSIVE_DIS]:
+                    reward -= 5.0   
+
         curr_opp_status = "AFFLICTED" if opp and opp.status else "CLEAN"
         if history.get('opp_status') == "CLEAN" and curr_opp_status == "AFFLICTED":
-            reward += 20.0 
+            reward += 10.0 
 
-        # Colocar Hazards
-        if last_action == "HAZARD":
-            reward += 20.0
-
-        # Limpar Hazards do próprio campo
-        curr_my_hazards = core.get_hazard_state(battle.side_conditions)
-        if history.get('my_hazards') == "SET" and curr_my_hazards == "CLEAR":
-            reward += 30.0
-
-        # 5. PUNIÇÃO POR DANO CRÍTICO (Fobia de morrer)
-        curr_my_hp_b = core.get_hp_bucket(active)
-        if history.get('my_hp_bucket') == "FULL" and curr_my_hp_b in ["LOW", "CRIT"]:
-            reward -= 30.0
+        if base_action == "HAZARD": reward += 10.0
+        elif base_action == "CLEAN_HAZARD": reward += 15.0
 
         return reward
 
-    def load_instinct_core_temp(self):
-        from instinct_core import InstinctCore
-        return InstinctCore()
-
-    def update_feedback(self, current_state, last_state, last_action, reward):
-        if last_state is not None and last_action is not None:
-            if current_state not in self.q_table:
-                self.q_table[current_state] = np.zeros(len(self.actions))
-            if last_state not in self.q_table:
-                self.q_table[last_state] = np.zeros(len(self.actions))
-            
-            action_idx = self.actions.index(last_action)
-            old_val = self.q_table[last_state][action_idx]
-            next_max = np.max(self.q_table[current_state])
-            
-            new_val = (1 - self.alpha) * old_val + self.alpha * (reward + self.gamma * next_max)
-            self.q_table[last_state][action_idx] = new_val
-
-    def decide_action(self, state, instinct_intent, available_actions):
-        if state not in self.q_table:
-            return instinct_intent
-
-        available_indices = [self.actions.index(act) for act in available_actions if act in self.actions]
-        if not available_indices: return instinct_intent 
-        
-        instinct_idx = self.actions.index(instinct_intent)
-        valid_q_values = {idx: self.q_table[state][idx] for idx in available_indices}
-        
-        best_action_idx = max(valid_q_values, key=valid_q_values.get)
-        best_q_value = valid_q_values[best_action_idx]
-        q_instinct = valid_q_values.get(instinct_idx, 0.0)
-
-        # =========================================================
-        # ARQUITETURA MESTRE-ALUNO
-        # =========================================================
-        
-        if best_q_value == 0.0:
-            # FASE 1: PREENCHIMENTO RÁPIDO (Bootstrapping)
-            # Estado novo. Sem testes cegos, sem derrotas burras. Segue o Mestre (Instinto).
-            action_idx = instinct_idx
-            
-        else: 
-            # Ajuste de Exploração Dinâmica: 
-            # - Se a nota é negativa (Modo Desespero): Dobra o Epsilon.
-            # - Se a nota é positiva (Zona de Conforto): Corta o Epsilon pela metade (Curiosidade cirúrgica).
-            current_epsilon = min(0.99, self.epsilon * 2.0) if best_q_value < 0 else (self.epsilon * 0.5)
-
-            if random.random() < current_epsilon:
-                # CURIOSIDADE: Tenta algo novo que não seja a escolha óbvia.
-                # Como a Matriz 4D já filtra lixo (via available_actions), qualquer teste aqui é "possível" de dar certo.
-                options_to_explore = [i for i in available_indices if i != best_action_idx]
-                action_idx = random.choice(options_to_explore) if options_to_explore else best_action_idx
-            else:
-                # SUPERAÇÃO ABSOLUTA: 
-                # Confia na matemática. Se a melhor nota da tabela for maior que a do Instinto,
-                # o Cérebro toma o controle. Se houver empate, respeita o Instinto.
-                if best_q_value > q_instinct:
-                    action_idx = best_action_idx
+    def update_feedback(self, current_state, last_state, last_action_tuple, reward):
+        if last_state is not None and last_action_tuple is not None:
+            with self._qtable_lock:
+                if last_state not in self.q_table:
+                    self.q_table[last_state] = np.zeros(len(self.actions))
+                    self.visit_counts[last_state] = 1
+                    effective_alpha = min(0.5, self.alpha * 2.0)
                 else:
-                    action_idx = instinct_idx
+                    self.visit_counts[last_state] = self.visit_counts.get(last_state, 1) + 1
+                    visits = self.visit_counts[last_state]
+                    effective_alpha = max(0.05, self.alpha / (1 + 0.05 * visits))
+                
+                base_action, mechanic = last_action_tuple
+                action_str = f"{base_action}_MEC" if mechanic else base_action
+                
+                if action_str in self.actions:
+                    action_idx = self.actions.index(action_str)
+                    old_val = self.q_table[last_state][action_idx]
+                    
+                    if current_state in [("TERMINAL_WIN",), ("TERMINAL_LOSS",)]:
+                        next_max = 0.0
+                    else:
+                        if current_state not in self.q_table:
+                            self.q_table[current_state] = np.zeros(len(self.actions))
+                            self.visit_counts[current_state] = 0
+                        next_max = np.max(self.q_table[current_state])
+                    
+                    new_val = (1 - effective_alpha) * old_val + effective_alpha * (reward + self.gamma * next_max)
+                    self.q_table[last_state][action_idx] = new_val
 
-        # Decaimento progressivo
-        self.epsilon = max(self.min_epsilon, self.epsilon * self.epsilon_decay)
+    def _add_action_indices(self, intent, target_list, valid_indices, is_mec_avail):
+        """Adiciona índices da ação base e _MEC (se disponível) à lista, verificando duplicatas e validade."""
+        if intent in self.actions:
+            idx = self.actions.index(intent)
+            if idx in valid_indices and idx not in target_list:
+                target_list.append(idx)
+        if is_mec_avail and "SWITCH" not in intent:
+            mec = f"{intent}_MEC"
+            if mec in self.actions:
+                idx = self.actions.index(mec)
+                if idx in valid_indices and idx not in target_list:
+                    target_list.append(idx)
+
+    def decide_action(self, state, instinct_profile):
+        if state not in self.q_table:
+            self.q_table[state] = np.zeros(len(self.actions))
+            self.visit_counts[state] = 0
+            
+        # --- ATUALIZADO: Herança _MEC para estados Novos E Existentes ---
+        for i, act in enumerate(self.actions):
+            if act.endswith("_MEC"):
+                base = act.replace("_MEC", "")
+                if base in self.actions:
+                    base_idx = self.actions.index(base)
+                    # Herda apenas se o _MEC for 0.0 e a ação base já tiver aprendido algo
+                    if self.q_table[state][i] == 0.0 and self.q_table[state][base_idx] != 0.0:
+                        self.q_table[state][i] = self.q_table[state][base_idx]
+
+        primary_intent, _, ranking_list, candidate_mask = instinct_profile
+
+        is_mec_avail = False
+        if isinstance(state, tuple) and len(state) > 0:
+            is_mec_avail = (state[-1] == "MEC_AVAIL")
         
-        return self.actions[action_idx]
+        valid_indices = []
+        for act in candidate_mask:
+            if act in self.base_actions:
+                valid_indices.append(self.actions.index(act)) 
+                if is_mec_avail and "SWITCH" not in act:
+                    valid_indices.append(self.actions.index(f"{act}_MEC"))
+
+        if not valid_indices: 
+            return (primary_intent, None)
+            
+        valid_q_values = {idx: self.q_table[state][idx] for idx in valid_indices}
+        best_action_idx = max(valid_q_values, key=valid_q_values.get)
+        worst_action_idx = min(valid_q_values, key=valid_q_values.get)
+        
+        best_q_value = valid_q_values[best_action_idx]
+        worst_q_value = valid_q_values[worst_action_idx]
+
+        if best_q_value == 0.0 and worst_q_value == 0.0:
+            try:
+                action_idx = self.actions.index(primary_intent)
+            except ValueError:
+                action_idx = random.choice(valid_indices)
+        else:
+            # --- EPSILON ADAPTATIVO POR VISITAS E INCERTEZA ---
+            visits = self.visit_counts.get(state, 0)
+            
+            if visits < 5:
+                state_epsilon = min(0.6, self.epsilon * 2.0)  # Exploração dobrada para estados super recentes
+            elif visits < 20:
+                state_epsilon = min(0.6, self.epsilon * 1.2)  # Exploração moderada
+            else:
+                # Pânico Escalonado e Incerteza Matemática para estados já maduros
+                spread = best_q_value - worst_q_value
+                if best_q_value < 0 and spread < 10.0:
+                    uncertainty_factor = 1.0  
+                elif best_q_value < 0:
+                    uncertainty_factor = 0.5  
+                else:
+                    uncertainty_factor = np.exp(-spread / 20.0) 
+                    
+                state_epsilon = min(0.6, self.epsilon * uncertainty_factor)
+
+            if random.random() < state_epsilon:
+                # === EXPLORAÇÃO POR CAMADAS DE RISCO ===
+                
+                safe_indices = []
+                for intent in ranking_list[:3]:
+                    self._add_action_indices(intent, safe_indices, valid_indices, is_mec_avail)
+                
+                risky_indices = []
+                for intent in ranking_list[3:]:
+                    self._add_action_indices(intent, risky_indices, valid_indices, is_mec_avail)
+                
+                off_radar = [idx for idx in valid_indices 
+                             if idx not in safe_indices and idx not in risky_indices]
+                
+                layer_roll = random.random()
+                
+                if layer_roll < 0.50:
+                    pool = safe_indices
+                elif layer_roll < 0.85:
+                    pool = risky_indices if risky_indices else safe_indices
+                else:
+                    pool = off_radar if off_radar else (risky_indices if risky_indices else safe_indices)
+                
+                if not pool:
+                    pool = valid_indices
+                
+                action_idx = random.choice(pool)
+            else:
+                action_idx = best_action_idx
+
+        chosen_action_str = self.actions[action_idx]
+        
+        if chosen_action_str.endswith("_MEC"):
+            base_act = chosen_action_str.replace("_MEC", "")
+            return (base_act, "ACTIVATE")
+        else:
+            return (chosen_action_str, None)
+
+    def decay_epsilon(self, battle_count=None):
+        self.epsilon = max(self.min_epsilon, self.epsilon * self.epsilon_decay)
 
     def _get_root_path(self, filename):
         current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -141,7 +299,12 @@ class BlueBrain:
 
     def save_model(self, filename="blue_brain.pkl"):
         filepath = self._get_root_path(filename)
-        data = {"q_table": self.q_table, "epsilon": self.epsilon}
+        data = {
+            "q_table": self.q_table,
+            "visit_counts": getattr(self, 'visit_counts', {}),
+            "epsilon": self.epsilon,
+            "current_phase": getattr(self, 'current_phase', 'maxdamage')
+        }
         try:
             with open(filepath, "wb") as f: pickle.dump(data, f)
         except: pass
@@ -152,70 +315,10 @@ class BlueBrain:
             try:
                 with open(filepath, "rb") as f:
                     data = pickle.load(f)
-                    old_q_table = data.get("q_table", {})
-                    
-                    new_q_table = {}
-                    for old_state, old_values in old_q_table.items():
-                        # 1. ATUALIZA A TUPLA (13 para 14)
-                        if len(old_state) == 13:
-                            state_list = list(old_state)
-                            if state_list[0] == "SPEED_SWEEPER": state_list[0] = "SWEEPER"
-                            elif state_list[0] == "TANK_BULK": state_list[0] = "TANK"
-                            if state_list[1] == "SPEED_SWEEPER": state_list[1] = "SWEEPER"
-                            elif state_list[1] == "TANK_BULK": state_list[1] = "TANK"
-                            
-                            state_list.append("MEC_USED") 
-                            new_state = tuple(state_list)
-                        else:
-                            new_state = old_state
-                            
-                        # 2. ATUALIZA A LISTA DE NOTAS (De 14 para 18 Ações - MUDANÇA V_6)
-                        if len(old_values) == 14:
-                            new_values = [0.0] * 18
-                            
-                            # Ramificação dos Ataques: herdando a experiência antiga de ATTACK
-                            new_values[0] = old_values[0]  # ATTACK_STRONG
-                            new_values[1] = old_values[0]  # ATTACK_PREDICTIVE
-                            new_values[2] = old_values[0]  # ATTACK_PIVOT
-                            new_values[3] = old_values[0]  # ATTACK_TECH
-                            
-                            new_values[4] = old_values[1]  # ATTACK_MEC
-                            new_values[5] = old_values[2]  # BUFF
-                            new_values[6] = old_values[3]  # STATUS
-                            new_values[7] = old_values[4]  # HEAL
-                            new_values[8] = old_values[5]  # CLEAN_HAZARD
-                            new_values[9] = old_values[6]  # PROTECT
-                            new_values[10] = old_values[7] # DEBUFF
-                            new_values[11] = old_values[8] # STAT_CLEAN
-                            new_values[12] = old_values[9] # HEAL_STATUS
-                            new_values[13] = old_values[10] # PHAZE
-                            new_values[14] = old_values[11] # FIELD_CONTROL
-                            new_values[15] = old_values[12] # HAZARD
-                            
-                            # Ramificação das Trocas: herdando a experiência antiga de SWITCH
-                            new_values[16] = old_values[13] # SWITCH_DEFENSIVE
-                            new_values[17] = old_values[13] # SWITCH_OFFENSIVE
-                            
-                            new_q_table[new_state] = new_values
-                            
-                        # Fallback caso encontre uma tabela ultra-antiga de 10 ações (V_4)
-                        elif len(old_values) == 10:
-                            new_values = [0.0] * 18
-                            new_values[0] = old_values[0]; new_values[1] = old_values[0]; new_values[2] = old_values[0]; new_values[3] = old_values[0]
-                            new_values[5] = old_values[1]
-                            new_values[6] = old_values[2]
-                            new_values[7] = max(old_values[3], old_values[9])
-                            new_values[8] = old_values[4]
-                            new_values[9] = old_values[5]
-                            new_values[10] = old_values[6]
-                            new_values[12] = old_values[7]
-                            new_values[16] = old_values[8]; new_values[17] = old_values[8]
-                            new_q_table[new_state] = new_values
-                            
-                        else:
-                            new_q_table[new_state] = old_values
-
-                    self.q_table = new_q_table
-                    print(f"[CÉREBRO V_6] Arquivo migrado e carregado com sucesso. Estados preservados: {len(self.q_table)}")
+                    self.q_table = data.get("q_table", {})
+                    self.visit_counts = data.get("visit_counts", {}) 
+                    self.epsilon = data.get("epsilon", self.epsilon)
+                    self.current_phase = data.get("current_phase", "maxdamage")
+                    print(f"[CÉREBRO] Brain Carregado. Estados: {len(self.q_table)} | Fase: {self.current_phase.upper()}")
             except Exception as e:
-                print(f"[ERRO] Falha ao carregar e migrar modelo: {e}")
+                print(f"[ERRO] Falha ao carregar modelo: {e}")

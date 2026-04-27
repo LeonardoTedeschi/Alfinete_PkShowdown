@@ -8,7 +8,7 @@ from datetime import datetime
 
 # --- CONFIGURAÇÃO DE CAMINHOS ---
 BRAIN_DIR = r"C:\Projetos Robotica Computacional\Projeto Showdown IA Pokemon\Bot-QV-Pokemon\Instinto"
-BRAIN_FILE = os.path.join(BRAIN_DIR, "blue_brain.pkl")
+BRAIN_FILE = os.path.join(BRAIN_DIR, "blue_brain_v10.pkl")
 
 SUPPORT_DIR = r"C:\Projetos Robotica Computacional\Projeto Showdown IA Pokemon\Bot-QV-Pokemon\Suporte_Treinamento\Suporte"
 LOG_DIR = os.path.join(SUPPORT_DIR, "logs_tese")

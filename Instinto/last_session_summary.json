@@ -1,0 +1,12 @@
+{
+  "phase": "maxdamage",
+  "opponent": "maxdamage",
+  "total_battles": 10001,
+  "total_wins": 5758,
+  "win_rate": 57.57424257574243,
+  "states": 30057,
+  "total_reward": 3646042.832562071,
+  "epsilon": 0.15,
+  "aborted": 0,
+  "brain_file": "blue_brain.pkl"
+}

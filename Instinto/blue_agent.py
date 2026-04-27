@@ -6,19 +6,22 @@ import logging
 import csv
 import warnings
 import traceback
+import threading  # Usado para o Lock do Pickle
+import json
+import argparse
 
 # --- 1. CONFIGURAÇÃO DE CAMINHOS ---
 current_dir = os.path.dirname(os.path.abspath(__file__))
 repo_root = os.path.abspath(os.path.join(current_dir, '..'))
 suporte_treinamento_dir = os.path.join(repo_root, 'Suporte_Treinamento')
 
-# ADICIONE ESTA LINHA: Mapeia a pasta exata onde o bot antigo está
+# Mapeia a pasta exata onde o bot antigo está
 pasta_antiga = os.path.join(current_dir, 'Vesão antiga') 
 
 if current_dir not in sys.path: sys.path.append(current_dir)
 if suporte_treinamento_dir not in sys.path: sys.path.append(suporte_treinamento_dir)
 
-# ADICIONE ESTA LINHA: Obriga o Python a ler o que tem dentro da pasta
+# Obriga o Python a ler o que tem dentro da pasta do bot antigo
 if pasta_antiga not in sys.path: sys.path.append(pasta_antiga)
 
 logging.basicConfig(level=logging.ERROR)
@@ -42,21 +45,49 @@ except ImportError as e:
     print(f"[ERRO] Falha de importação: {e}")
     sys.exit(1)
 
+# --- 2. CONFIGURAÇÃO DO CIRCUITO ---
+def load_circuit_config():
+    config_path = os.path.join(current_dir, "circuit_state.json")
+    if os.path.exists(config_path):
+        with open(config_path, "r") as f:
+            return json.load(f)
+    return {}
+
+circuit_cfg = load_circuit_config()
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--phase", type=str, default=circuit_cfg.get("phase", "maxdamage"))
+parser.add_argument("--opponent", type=str, default=circuit_cfg.get("opponent", "maxdamage"))
+parser.add_argument("--n-battles", type=int, default=circuit_cfg.get("n_battles", 10000))
+# --- NOME LIMPO ---
+parser.add_argument("--brain", type=str, default=circuit_cfg.get("brain_filename", "blue_brain.pkl"))
+args, _ = parser.parse_known_args()
+
+# --- CONFIGURAÇÕES DE CONEXÃO ---
 LOCAL_CONFIG = ServerConfiguration("ws://127.0.0.1:8000/showdown/websocket", "http://127.0.0.1:8000/")
-BLOCK_SIZE = 500
+BLOCK_SIZE = 500 # A cada 500 batalhas teremos o log no CSV e o Print
 
 class BLUE(Player):
     def __init__(self, *args, **kwargs):
         # 1. Cria todas as variáveis de estado PRIMEIRO para evitar Race Conditions
         self.core = InstinctCore()
         self.brain = BlueBrain()
+        
+        # --- Passamos o core para o cérebro ---
+        self.brain.core = self.core 
+        
         self.paths = plot_graph.setup_training_files()
         
         self.battle_history = {} 
         self.total_completed_battles = 0
+        self.aborted_battles = 0 # Contador para Ghost Battles
         self.total_wins = 0
         self.total_reward_sum = 0.0
         self.block_wins = 0
+        
+        # Lock de thread para evitar corrupção do arquivo PKL com alta concorrência
+        self._save_lock = threading.Lock() 
+        
         self._init_csv()
         
         # 2. Conecta ao servidor e se declara pronto POR ÚLTIMO
@@ -66,11 +97,14 @@ class BLUE(Player):
         try:
             with open(self.paths['csv'], 'w', newline='') as f:
                 writer = csv.writer(f)
-                writer.writerow(["Batalhas", "WinRate_Bloco", "Epsilon", "Reward"])
+                writer.writerow(["Batalhas", "WinRate_Bloco", "Epsilon", "Reward", "Ghost_Battles"])
         except: pass
 
     def save_brain_silently(self):
-        self.brain.save_model("blue_brain.pkl")
+        with self._save_lock:
+            # Salva usando o nome de arquivo passado pelo Circuito
+            filename = getattr(self.brain, 'filename', "blue_brain.pkl")
+            self.brain.save_model(filename)
 
     def check_finished_battles(self):
         battles_snapshot = list(self.battles.items())
@@ -88,34 +122,44 @@ class BLUE(Player):
 
         try:
             history = self.battle_history.get(battle.battle_tag, {})
+            
+            # --- ESTADO TERMINAL IMPLACÁVEL ---
             if history:
                 reward = self.brain.calculate_reward(battle, history)
                 self.total_reward_sum += reward
                 
                 last_state = history.get('state')
-                last_action = history.get('last_action')
+                last_action_tuple = history.get('last_action')
                 
-                if last_state and last_action:
-                    current_state = self.core.get_state(battle) 
-                    self.brain.update_feedback(current_state, last_state, last_action, reward)
+                if last_state and last_action_tuple:
+                    current_state = ("TERMINAL_WIN",) if battle.won else ("TERMINAL_LOSS",)
+                    self.brain.update_feedback(current_state, last_state, last_action_tuple, reward)
                 
+                # Trava do semáforo (formalidade para deleção segura)
+                history['reward_processed'] = True
                 del self.battle_history[battle.battle_tag]
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[Aviso] Erro ao processar fim de batalha: {e}")
 
+        # Atualiza o modelo do cérebro (Q-Table em disco) a cada partida com segurança
+        self.save_brain_silently()
+
+        # Atualiza o CSV e mostra no terminal a cada 500 partidas
         try:
             if self.total_completed_battles % BLOCK_SIZE == 0:
+                self.brain.decay_epsilon(self.total_completed_battles)
+                
                 block_wr = (self.block_wins / BLOCK_SIZE) * 100
                 try:
                     with open(self.paths["csv"], "a", newline='') as f:
                         writer = csv.writer(f)
-                        writer.writerow([self.total_completed_battles, block_wr, self.brain.epsilon, self.total_reward_sum])
+                        writer.writerow([self.total_completed_battles, block_wr, self.brain.epsilon, self.total_reward_sum, self.aborted_battles])
                 except: pass
                 
-                print(f"[Progresso] {self.total_completed_battles} Batalhas | Win Rate (Bloco): {block_wr:.1f}% | Estados: {len(self.brain.q_table)}")
+                # Print atualizado exibindo as Recompensas Totais e Quantidade de Estados
+                print(f"[Progresso] {self.total_completed_battles} Batalhas | Win Rate (Bloco): {block_wr:.1f}% | Recompensa Total: {self.total_reward_sum:.0f} | Estados: {len(self.brain.q_table)} | Epsilon: {self.brain.epsilon:.3f} | Erros (Rede): {self.aborted_battles}")
                 
                 self.block_wins = 0
-                self.save_brain_silently()
         except Exception:
             pass
 
@@ -126,115 +170,163 @@ class BLUE(Player):
             return "/team 123456"
 
     def choose_move(self, battle):
+        # Trava de Segurança Imediata para Race Condition
+        if battle.finished:
+            return self.choose_random_move(battle)
+
         self.check_finished_battles()
         
+        if battle.finished:
+            return self.choose_random_move(battle)
+
         try:
             history = self.battle_history.get(battle.battle_tag, {})
 
-            # Gerenciamento de Troca Forçada
+            # 1. Gerenciamento de Troca Forçada (Morte do Pokémon)
             switch_forced = False
             if isinstance(battle.force_switch, list): switch_forced = any(battle.force_switch)
             else: switch_forced = bool(battle.force_switch)
 
             if switch_forced or (battle.active_pokemon and battle.active_pokemon.fainted):
-                best_switch = self.core.get_best_switch(battle, history)
-                if best_switch: return self.create_order(best_switch)
+                best_switch = self.core.get_post_faint_switch(battle, history)
+                if best_switch and best_switch in battle.available_switches:
+                    return self.create_order(best_switch)
                 return self.choose_random_move(battle)
 
+            # 2. Estado calculado uma única vez no turno
             current_state = self.core.get_state(battle)
             
-            # Atualização e Feedback da Q-Table no turno a turno
-            if history:
+            # --- BLINDAGEM DE RACE CONDITION: Atualização e Feedback da Q-Table do turno anterior
+            if history and not battle.finished and not history.get('reward_processed', False):
                 reward = self.brain.calculate_reward(battle, history)
                 self.total_reward_sum += reward
                 last_state = history.get('state')
-                last_action = history.get('last_action')
-                if last_state and last_action:
-                    self.brain.update_feedback(current_state, last_state, last_action, reward)
+                last_action_tuple = history.get('last_action')
+                if last_state and last_action_tuple:
+                    self.brain.update_feedback(current_state, last_state, last_action_tuple, reward)
+                    
+                # Acende a flag informando que a recompensa dessa transição já foi absorvida
+                history['reward_processed'] = True
 
-            current_state = self.core.get_state(battle)
-            instinct_intent = self.core.get_instinct_intent(battle)
+            # 4. Puxa o Perfil completo do Instinto (Action Masking + Ranking)
+            instinct_profile = self.core.get_instinct_profile(battle)
             
-            # Action Masking restringe as opções visíveis para o Cérebro
-            available_actions = self.core.get_available_actions(battle)
-            final_decision = self.brain.decide_action(current_state, instinct_intent, available_actions)
-
-            opp_species = battle.opponent_active_pokemon.species if battle.opponent_active_pokemon else None
-
-            active = battle.active_pokemon
-            opp = battle.opponent_active_pokemon
-            
-            self.battle_history[battle.battle_tag] = {
-                'state': current_state,
-                'last_action': final_decision, 
-                
-                # NOVO: Tira foto da vida e status de todos no banco para avaliar a troca
-                'team_hp': {m.species: m.current_hp_fraction for m in battle.team.values()},
-                'team_status': {m.species: str(m.status) if m.status else "CLEAN" for m in battle.team.values() if hasattr(m, 'status')},
-                
-                'my_hp_bucket': self.core.get_hp_bucket(battle.active_pokemon),
-                'opp_hp_bucket': self.core.get_opp_hp_bucket(battle.opponent_active_pokemon),
-                'my_status': self.core.get_status_state(battle.active_pokemon),
-                'opp_status': self.core.get_status_state(battle.opponent_active_pokemon),
-                'my_boosts': battle.active_pokemon.boosts.copy() if battle.active_pokemon else {},
-                'my_hazards': self.core.get_hazard_state(battle.side_conditions),
-                'opp_species': opp_species,
-                'my_fainted': len([m for m in battle.team.values() if m.fainted]),
-                'opp_fainted': len([m for m in battle.opponent_team.values() if m.fainted])
-            }
-
+            # 5. Desempacotamento da Decisão
+            final_decision_tuple = self.brain.decide_action(current_state, instinct_profile)
+            action_str, mec_decision = final_decision_tuple
 
             # =================================================================
             # EXECUÇÃO MECÂNICA E TRADUÇÃO (Instinto -> Poke-env)
             # =================================================================
-
-            execution_list = [final_decision, instinct_intent, "ATTACK", "SWITCH"]
             
-            # Recebe a tupla (Objeto_do_Jogo, Flag_da_Mecânica)
-            execution_result = self.core.get_best_execution_object(execution_list, battle, history)
+            action_obj = self.core.get_best_execution_object(action_str, battle, history)
             
-            action_obj = execution_result[0]
-            mechanic_flag = execution_result[1]
+            if not action_obj:
+                return self.choose_random_move(battle)
 
-            if action_obj:
-                # Checagem direta de objeto (Sem importar a classe Move)
-                if action_obj in battle.available_moves:
-                    is_tera = (mechanic_flag == "MEC") and battle.can_tera
-                    is_mega = (mechanic_flag == "MEC") and battle.can_mega_evolve
-                    is_dyna = (mechanic_flag == "MEC") and battle.can_dynamax
-                    is_z = (mechanic_flag == "MEC") and battle.can_z_move
+            # --- CORREÇÃO: PIVOT OVERRIDE ANTES DO HISTÓRICO ---
+            if hasattr(action_obj, 'id') and action_obj.id in ['uturn', 'voltswitch', 'flipturn', 'partingshot', 'teleport']:
+                if "SWITCH" in action_str:
+                    action_str = "ATTACK_PIVOT"
+                    final_decision_tuple = (action_str, mec_decision)
 
-                    # --- INTERCEPTADOR E CORREÇÃO DE Z-MOVES ---
-                    if is_z and battle.active_pokemon.item:
-                        item_str = str(battle.active_pokemon.item).lower()
-                        if item_str.endswith('z'):
-                            crystal_map = {
-                                'normaliumz': 'normal', 'firiumz': 'fire', 'wateriumz': 'water',
-                                'electriumz': 'electric', 'grassiumz': 'grass', 'iciumz': 'ice',
-                                'fightiniumz': 'fighting', 'poisoniumz': 'poison', 'groundiumz': 'ground',
-                                'flyiniumz': 'flying', 'psychiumz': 'psychic', 'buginiumz': 'bug',
-                                'rockiumz': 'rock', 'ghostiumz': 'ghost', 'dragoniumz': 'dragon',
-                                'darkiniumz': 'dark', 'steeliumz': 'steel', 'fairiumz': 'fairy'
-                            }
-                            signature_map = {
-                                'aloraichiumz': 'thunderbolt', 'decidiumz': 'spiritshackle', 
-                                'eeviumz': 'lastresort', 'inciniumz': 'darkestlariat', 
-                                'kommoniumz': 'clangingscales', 'lunaliumz': 'moongeistbeam', 
-                                'lycaniumz': 'stoneedge', 'marshadiumz': 'spectralthief', 
-                                'mewniumz': 'psychic', 'mimikiumz': 'playrough', 
-                                'pikaniumz': 'volttackle', 'pikashuniumz': 'thunderbolt', 
-                                'primariumz': 'sparklingaria', 'snorliumz': 'gigaimpact', 
-                                'solganiumz': 'sunsteelstrike', 'tapuniumz': 'naturesmadness', 
-                                'ultranecroziumz': 'photongeyser'
-                            }
-                            
-                            req_type = crystal_map.get(item_str)
-                            req_move_id = signature_map.get(item_str)
-                            valid_z = None
+            # --- PREPARAÇÃO DO HISTÓRICO (MOMENTUM) ---
+            opp_species = battle.opponent_active_pokemon.species if battle.opponent_active_pokemon else None
+            active = battle.active_pokemon
+            opp = battle.opponent_active_pokemon
+            
+            opp_switched = False
+            if history:
+                prev_opp_species = history.get('opp_species')
+                prev_opp_hp = history.get('opp_hp_prev', 0.0)
+                
+                if prev_opp_species and opp_species and (prev_opp_species != opp_species):
+                    if prev_opp_hp > 0.0:
+                        opp_switched = True
+            
+            # Salvamos o histórico com a decisão final e RESETAMOS a flag de processamento
+            self.battle_history[battle.battle_tag] = {
+                'state': current_state,
+                'last_action': final_decision_tuple, 
+                'reward_processed': False,  # <--- NOVA TRANSIÇÃO: NASCE NÃO PROCESSADA
+                
+                'team_hp': {m.species: m.current_hp_fraction for m in battle.team.values()},
+                'team_status': {m.species: str(m.status) if m.status else "CLEAN" for m in battle.team.values() if hasattr(m, 'status')},
+                
+                'my_hp_prev': active.current_hp_fraction if active else 0.0,
+                'opp_hp_prev': opp.current_hp_fraction if opp else 0.0,
+                'my_hp_bucket': self.core.get_hp_bucket(active),
+                'opp_hp_bucket': self.core.get_opp_hp_bucket(opp),
+                'my_status': self.core.get_status_state(active),
+                'opp_status': self.core.get_status_state(opp),
+                'my_boosts': active.boosts.copy() if active else {},
+                'my_hazards': self.core.get_hazard_state(battle.side_conditions),
+                'opp_species': opp_species,
+                
+                'opp_switched': opp_switched, 
+                
+                'my_fainted': len([m for m in battle.team.values() if m.fainted]),
+                'opp_fainted': len([m for m in battle.opponent_team.values() if m.fainted]),
+                
+                # --- NOVAS VARIÁVEIS PARA RECOMPENSA DENSA ---
+                'my_alive': len([m for m in battle.team.values() if not m.fainted]),
+                'opp_alive': len([m for m in battle.opponent_team.values() if not m.fainted]),
+                'matchup': self.core.get_matchup_state(active, opp) if active and opp else None
+            }
+
+            if action_obj in battle.available_moves:
+                
+                # Injeção da decisão de Mecânica (Hierarquia Corrigida)
+                should_activate = (mec_decision == "ACTIVATE")
+                is_tera = False
+                is_mega = False
+                is_dyna = False
+                is_z = False
+                
+                if should_activate:
+                    if battle.can_tera:
+                        is_tera = True
+                    elif battle.can_z_move:
+                        is_z = True
+                    elif battle.can_mega_evolve:
+                        is_mega = True
+                    elif battle.can_dynamax:
+                        is_dyna = True
+
+                # --- INTERCEPTADOR E CORREÇÃO DE Z-MOVES ---
+                if is_z and active.item:
+                    item_str = str(active.item).lower()
+                    if item_str.endswith('z'):
+                        crystal_map = {
+                            'normaliumz': 'normal', 'firiumz': 'fire', 'wateriumz': 'water',
+                            'electriumz': 'electric', 'grassiumz': 'grass', 'iciumz': 'ice',
+                            'fightiniumz': 'fighting', 'poisoniumz': 'poison', 'groundiumz': 'ground',
+                            'flyiniumz': 'flying', 'psychiumz': 'psychic', 'buginiumz': 'bug',
+                            'rockiumz': 'rock', 'ghostiumz': 'ghost', 'dragoniumz': 'dragon',
+                            'darkiniumz': 'dark', 'steeliumz': 'steel', 'fairiumz': 'fairy'
+                        }
+                        signature_map = {
+                            'aloraichiumz': 'thunderbolt', 'decidiumz': 'spiritshackle', 
+                            'eeviumz': 'lastresort', 'inciniumz': 'darkestlariat', 
+                            'kommoniumz': 'clangingscales', 'lunaliumz': 'moongeistbeam', 
+                            'lycaniumz': 'stoneedge', 'marshadiumz': 'spectralthief', 
+                            'mewniumz': 'psychic', 'mimikiumz': 'playrough', 
+                            'pikaniumz': 'volttackle', 'pikashuniumz': 'thunderbolt', 
+                            'primariumz': 'sparklingaria', 'snorliumz': 'gigaimpact', 
+                            'solganiumz': 'sunsteelstrike', 'tapuniumz': 'naturesmadness', 
+                            'ultranecroziumz': 'photongeyser'
+                        }
+                        
+                        req_type = crystal_map.get(item_str)
+                        req_move_id = signature_map.get(item_str)
+                        valid_z = None
+                        
+                        try:
+                            action_type_str = action_obj.type.name.lower() if action_obj.type else ""
                             
                             if req_type:
-                                if str(action_obj.type).split('.')[-1].lower() != req_type:
-                                    valid_z = next((m for m in battle.available_moves if str(m.type).split('.')[-1].lower() == req_type), None)
+                                if action_type_str != req_type:
+                                    valid_z = next((m for m in battle.available_moves if m.type and m.type.name.lower() == req_type), None)
                             elif req_move_id:
                                 if action_obj.id != req_move_id:
                                     valid_z = next((m for m in battle.available_moves if m.id == req_move_id), None)
@@ -242,22 +334,23 @@ class BLUE(Player):
                             if req_type or req_move_id:
                                 if valid_z:
                                     action_obj = valid_z 
-                                elif (req_type and str(action_obj.type).split('.')[-1].lower() != req_type) or (req_move_id and action_obj.id != req_move_id):
+                                elif (req_type and action_type_str != req_type) or (req_move_id and action_obj.id != req_move_id):
                                     is_z = False 
                             else:
                                 is_z = False 
+                        except Exception as ez:
+                            print(f"[Aviso Z-Move] Falha na interpretação: {ez}")
+                            is_z = False
 
-                    # Disparo da ordem de ataque para o servidor
-                    return self.create_order(
-                        action_obj, 
-                        terastallize=is_tera, 
-                        mega=is_mega, 
-                        z_move=is_z,
-                        dynamax=is_dyna
-                    )
-                else:
-                    # É uma ordem de troca de Pokémon
-                    return self.create_order(action_obj)
+                return self.create_order(
+                    action_obj, 
+                    terastallize=is_tera, 
+                    mega=is_mega, 
+                    z_move=is_z,
+                    dynamax=is_dyna
+                )
+            elif action_obj in battle.available_switches:
+                return self.create_order(action_obj)
             else:
                 return self.choose_random_move(battle)
 
@@ -267,10 +360,10 @@ class BLUE(Player):
             return self.choose_random_move(battle)
 
 # =============================================================================
-# BLOCO DE EXECUÇÃO PADRÃO
+# BLOCO DE EXECUÇÃO PADRÃO E CIRCUITO
 # =============================================================================
 async def main():
-    n_battles = 10000
+    n_battles = args.n_battles
     CONCURRENCY = 7
     
     team_builder = RandomTeamFromPool(TEAMS_LIST)
@@ -282,24 +375,64 @@ async def main():
         max_concurrent_battles=CONCURRENCY
     )
 
-    # [FASE 1] - MAX DAMAGE (O Saco de Pancadas Suicida)
-    # rival = MaxDamagePlayer(
-    #     battle_format="gen9nationaldex", 
-    #     server_configuration=LOCAL_CONFIG,
-    #     team=team_builder,
-    #     max_concurrent_battles=CONCURRENCY
-    # )
+    if hasattr(bot.brain, 'enter_phase'):
+        bot.brain.enter_phase(args.phase)
+        
+    bot.brain.filename = args.brain 
+    
+    # --- CORREÇÃO DA AMNÉSIA: O CÉREBRO CARREGA DO DISCO AQUI ---
+    bot.brain.load_model(args.brain)
+    
+    if circuit_cfg.get("epsilon_override") is not None:
+        bot.brain.epsilon = circuit_cfg["epsilon_override"]
+        print(f"[CIRCUITO] Epsilon override: {bot.brain.epsilon:.3f}")
 
-    # [FASE 2] - INSTINTO SIMPLES (A Ponte Tática)
-    rival = InstinctBot(
-        battle_format="gen9nationaldex", 
-        server_configuration=LOCAL_CONFIG,
-        team=team_builder,
-        max_concurrent_battles=CONCURRENCY
-    )
+    if args.opponent == "maxdamage":
+        rival = MaxDamagePlayer(
+            battle_format="gen9nationaldex",
+            server_configuration=LOCAL_CONFIG,
+            team=team_builder,
+            max_concurrent_battles=CONCURRENCY
+        )
+    elif args.opponent == "instinct":
+        rival = InstinctBot(
+            battle_format="gen9nationaldex",
+            server_configuration=LOCAL_CONFIG,
+            team=team_builder,
+            max_concurrent_battles=CONCURRENCY
+        )
+    elif args.opponent == "selfplay_frozen":
+        rival = BLUE(
+            battle_format="gen9nationaldex",
+            server_configuration=LOCAL_CONFIG,
+            team=team_builder,
+            max_concurrent_battles=CONCURRENCY
+        )
+        rival.brain = BlueBrain() 
+        rival.brain.core = rival.core
+        
+        frozen_path = circuit_cfg.get("frozen_brain", "frozen_blue_brain.pkl")
+        
+        if os.path.exists(frozen_path):
+            rival.brain.load_model(frozen_path)
+            rival.brain.epsilon = 0.0 
+            print(f"[SELF-PLAY] Oponente congelado: {frozen_path}")
+        else:
+            print("[SELF-PLAY] AVISO: Frozen não encontrado. Usando brain padrão (blue_brain.pkl).")
+            rival.brain.load_model("blue_brain.pkl")
+            rival.brain.epsilon = 0.0
+    else:
+        rival = MaxDamagePlayer(
+            battle_format="gen9nationaldex",
+            server_configuration=LOCAL_CONFIG,
+            team=team_builder,
+            max_concurrent_battles=CONCURRENCY
+        )
     
     print(f"{'='*40}")
     print(f" SESSÃO: {bot.paths['id']}")
+    print(f" FASE:   {args.phase}")
+    print(f" RIVAL:  {args.opponent}")
     print(f" LOG:    {bot.paths['csv']}")
     print(f" META:   {n_battles} batalhas")
     print(f"{'='*40}")
@@ -315,12 +448,19 @@ async def main():
             try:
                 await asyncio.wait_for(
                     bot.battle_against(rival, n_battles=current_batch),
-                    timeout=300
+                    timeout=2400
                 )
             except asyncio.TimeoutError:
-                print("\n[WATCHDOG] O servidor Showdown engoliu um pacote (Ghost Battle). Destravando rede...")
+                bot.aborted_battles += 1
+                print(f"\n[WATCHDOG] Servidor engoliu um pacote. Destravando rede... (Falhas: {bot.aborted_battles})")
+                
+                for b_id in list(bot.battles.keys()):
+                    if b_id in bot.battle_history:
+                        del bot.battle_history[b_id]
+                
                 bot.battles.clear()
-                rival.battles.clear()
+                if hasattr(rival, 'battles'):
+                    rival.battles.clear()
                 await asyncio.sleep(2)
             except Exception:
                 pass
@@ -331,24 +471,61 @@ async def main():
         bot.check_finished_battles()
         bot.save_brain_silently()
         
-        end_time = time.time()
+        # --- PROTEÇÃO DO FROZEN APENAS NO SELFPLAY ---
+        if args.phase == "selfplay":
+            frozen_target = circuit_cfg.get("frozen_brain", "frozen_blue_brain.pkl")
+            bot.brain.save_model(frozen_target)
+            print(f"[SELF-PLAY] Cópia atual salva como snapshot congelado: {frozen_target}")
         
-        try:
-            plot_graph.generate_graph(bot.paths['csv'], bot.paths['graph'], title_suffix=str(bot.paths['id']))
-        except: pass
+        end_time = time.time()
         
         valid = bot.total_completed_battles
         wins = bot.total_wins
         win_rate = (wins / valid * 100) if valid > 0 else 0.0
         
+        try:
+            plot_graph.generate_graph(
+                csv_path=bot.paths['csv'], 
+                img_output_path=bot.paths['graph'], 
+                title_suffix=str(bot.paths['id']),
+                opponent=args.opponent,
+                phase=args.phase,
+                total_battles=valid,
+                final_win_rate=win_rate,
+                final_states=len(bot.brain.q_table)
+            )
+        except: pass
+        
+        session_summary = {
+            "phase": args.phase,
+            "opponent": args.opponent,
+            "total_battles": valid,
+            "total_wins": wins,
+            "win_rate": win_rate,
+            "states": len(bot.brain.q_table),
+            "total_reward": bot.total_reward_sum,
+            "epsilon": bot.brain.epsilon,
+            "aborted": bot.aborted_battles,
+            "brain_file": args.brain
+        }
+        
+        summary_path = os.path.join(current_dir, "last_session_summary.json")
+        try:
+            with open(summary_path, "w") as f:
+                json.dump(session_summary, f, indent=2)
+        except Exception as e:
+            print(f"[Aviso] Não foi possível salvar o last_session_summary: {e}")
+
         print(f"\n{'='*40}")
         print(f"           RESULTADO FINAL")
         print(f"{'='*40}")
-        print(f"Tempo:       {(end_time - start_time) / 60:.1f} minutos")
-        print(f"Estados:     {len(bot.brain.q_table)}")
-        print(f"Batalhas:    {valid}")
-        print(f"Vitórias:    {wins}")
-        print(f"Win Rate:    {win_rate:.2f}%")
+        print(f"Tempo:            {(end_time - start_time) / 60:.1f} minutos")
+        print(f"Estados:          {len(bot.brain.q_table)}")
+        print(f"Batalhas:         {valid}")
+        print(f"Vitórias:         {wins}")
+        print(f"Win Rate:         {win_rate:.2f}%")
+        print(f"Recompensa Total: {bot.total_reward_sum:.0f}")
+        print(f"Abortadas:        {bot.aborted_battles}")
         os._exit(0)
 
 if __name__ == "__main__":
