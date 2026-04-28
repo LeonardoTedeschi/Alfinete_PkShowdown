@@ -61,7 +61,7 @@ CIRCUIT = {
 }
 
 PHASE_ORDER = ["maxdamage", "instinct", "selfplay_v1", "selfplay_v2"]
-TEMPO_LIMITE_MINUTOS = 60
+TEMPO_LIMITE_MINUTOS = 240
 
 def log_msg(msg):
     timestamp = datetime.now().strftime("%H:%M:%S")

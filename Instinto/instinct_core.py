@@ -488,11 +488,19 @@ class InstinctCore:
             my_best_mult = 0.0
 
         opp_best_mult = 0.0
+        # 1. Checa contra os Tipos Base (STAB)
         for type_ in opp_mon.types:
              if type_:
                  multiplier = my_mon.damage_multiplier(type_)
                  if multiplier > opp_best_mult: 
                      opp_best_mult = multiplier
+                     
+        # 2. CORREÇÃO: Checa contra Golpes de Coverage Revelados
+        known_opp_moves = [m for m in opp_mon.moves.values() if m.base_power > 0]
+        for move in known_opp_moves:
+             multiplier = my_mon.damage_multiplier(move)
+             if multiplier > opp_best_mult:
+                 opp_best_mult = multiplier
 
         my_se = my_best_mult > 1.0
         my_neutral = my_best_mult == 1.0

@@ -123,8 +123,8 @@ class BLUE(Player):
         try:
             history = self.battle_history.get(battle.battle_tag, {})
             
-            # --- ESTADO TERMINAL IMPLACÁVEL ---
-            if history:
+            # --- CORREÇÃO: Só processa se a recompensa NÃO foi processada no turno ---
+            if history and not history.get('reward_processed', False):
                 reward = self.brain.calculate_reward(battle, history)
                 self.total_reward_sum += reward
                 
@@ -135,33 +135,20 @@ class BLUE(Player):
                     current_state = ("TERMINAL_WIN",) if battle.won else ("TERMINAL_LOSS",)
                     self.brain.update_feedback(current_state, last_state, last_action_tuple, reward)
                 
-                # Trava do semáforo (formalidade para deleção segura)
                 history['reward_processed'] = True
+            
+            # Remove do history independente
+            if battle.battle_tag in self.battle_history:
                 del self.battle_history[battle.battle_tag]
+                
         except Exception as e:
             print(f"[Aviso] Erro ao processar fim de batalha: {e}")
 
-        # Atualiza o modelo do cérebro (Q-Table em disco) a cada partida com segurança
+        # --- REMOVER save_brain_silently duplicado ---
         self.save_brain_silently()
-
-        # Atualiza o CSV e mostra no terminal a cada 500 partidas
-        try:
-            if self.total_completed_battles % BLOCK_SIZE == 0:
-                self.brain.decay_epsilon(self.total_completed_battles)
-                
-                block_wr = (self.block_wins / BLOCK_SIZE) * 100
-                try:
-                    with open(self.paths["csv"], "a", newline='') as f:
-                        writer = csv.writer(f)
-                        writer.writerow([self.total_completed_battles, block_wr, self.brain.epsilon, self.total_reward_sum, self.aborted_battles])
-                except: pass
-                
-                # Print atualizado exibindo as Recompensas Totais e Quantidade de Estados
-                print(f"[Progresso] {self.total_completed_battles} Batalhas | Win Rate (Bloco): {block_wr:.1f}% | Recompensa Total: {self.total_reward_sum:.0f} | Estados: {len(self.brain.q_table)} | Epsilon: {self.brain.epsilon:.3f} | Erros (Rede): {self.aborted_battles}")
-                
-                self.block_wins = 0
-        except Exception:
-            pass
+ 
+        if hasattr(self.brain, 'replay_experience'):
+            self.brain.replay_experience()
 
     def teampreview(self, battle):
         try:
@@ -181,6 +168,21 @@ class BLUE(Player):
 
         try:
             history = self.battle_history.get(battle.battle_tag, {})
+            current_state = self.core.get_state(battle)
+            
+            if history and not battle.finished and not history.get('reward_processed', False):
+                reward = self.brain.calculate_reward(battle, history)
+                self.total_reward_sum += reward
+                last_state = history.get('state')
+                last_action_tuple = history.get('last_action')
+                if last_state and last_action_tuple:
+                    self.brain.update_feedback(current_state, last_state, last_action_tuple, reward)
+
+                if hasattr(self.brain, 'replay_experience'):
+                        self.brain.replay_experience()
+                    
+                # Acende a flag informando que a recompensa dessa transição já foi absorvida
+                history['reward_processed'] = True
 
             # 1. Gerenciamento de Troca Forçada (Morte do Pokémon)
             switch_forced = False
@@ -192,21 +194,6 @@ class BLUE(Player):
                 if best_switch and best_switch in battle.available_switches:
                     return self.create_order(best_switch)
                 return self.choose_random_move(battle)
-
-            # 2. Estado calculado uma única vez no turno
-            current_state = self.core.get_state(battle)
-            
-            # --- BLINDAGEM DE RACE CONDITION: Atualização e Feedback da Q-Table do turno anterior
-            if history and not battle.finished and not history.get('reward_processed', False):
-                reward = self.brain.calculate_reward(battle, history)
-                self.total_reward_sum += reward
-                last_state = history.get('state')
-                last_action_tuple = history.get('last_action')
-                if last_state and last_action_tuple:
-                    self.brain.update_feedback(current_state, last_state, last_action_tuple, reward)
-                    
-                # Acende a flag informando que a recompensa dessa transição já foi absorvida
-                history['reward_processed'] = True
 
             # 4. Puxa o Perfil completo do Instinto (Action Masking + Ranking)
             instinct_profile = self.core.get_instinct_profile(battle)
@@ -243,12 +230,16 @@ class BLUE(Player):
                 if prev_opp_species and opp_species and (prev_opp_species != opp_species):
                     if prev_opp_hp > 0.0:
                         opp_switched = True
-            
+
             # Salvamos o histórico com a decisão final e RESETAMOS a flag de processamento
             self.battle_history[battle.battle_tag] = {
                 'state': current_state,
                 'last_action': final_decision_tuple, 
-                'reward_processed': False,  # <--- NOVA TRANSIÇÃO: NASCE NÃO PROCESSADA
+                'reward_processed': False,  
+                
+                # NOVO: Registra a espécie para impedir bugs no cálculo de Dano/Cura
+                'my_species': active.species if active else None,
+                'opp_species': opp.species if opp else None,
                 
                 'team_hp': {m.species: m.current_hp_fraction for m in battle.team.values()},
                 'team_status': {m.species: str(m.status) if m.status else "CLEAN" for m in battle.team.values() if hasattr(m, 'status')},
@@ -382,10 +373,6 @@ async def main():
     
     # --- CORREÇÃO DA AMNÉSIA: O CÉREBRO CARREGA DO DISCO AQUI ---
     bot.brain.load_model(args.brain)
-    
-    if circuit_cfg.get("epsilon_override") is not None:
-        bot.brain.epsilon = circuit_cfg["epsilon_override"]
-        print(f"[CIRCUITO] Epsilon override: {bot.brain.epsilon:.3f}")
 
     if args.opponent == "maxdamage":
         rival = MaxDamagePlayer(
@@ -445,6 +432,9 @@ async def main():
             faltam = n_battles - bot.total_completed_battles
             current_batch = min(BLOCK_SIZE, faltam)
             
+            # Salva quantas batalhas tínhamos ANTES de começar este bloco
+            completed_before = bot.total_completed_battles
+            
             try:
                 await asyncio.wait_for(
                     bot.battle_against(rival, n_battles=current_batch),
@@ -464,9 +454,37 @@ async def main():
                 await asyncio.sleep(2)
             except Exception:
                 pass
+            
+            # --- CORREÇÃO DO 499: Respiro de 1 segundo para a rede descarregar a última mensagem ---
+            await asyncio.sleep(1)
+            bot.check_finished_battles()
+            
+            # === BLOCO MATEMÁTICO CORRIGIDO ===
+            completed = bot.total_completed_battles
+            processed_this_block = completed - completed_before
+
+            if processed_this_block > 0:
+                win_rate_bloco = (bot.block_wins / processed_this_block) * 100
+                print(f"[Progresso] {completed} Batalhas | Win Rate (Bloco): {win_rate_bloco:.1f}% | Recompensa Total: {bot.total_reward_sum:.0f} | Estados: {len(bot.brain.q_table)} | Epsilon: {bot.brain.epsilon:.3f} | Erros (Rede): {bot.aborted_battles}")
                 
+                # --- O GATILHO POR BLOCO ESTÁ AQUI ---
+                if hasattr(bot.brain, 'decay_epsilon'):
+                    bot.brain.decay_epsilon()
+                    
+                # Salva a linha no CSV
+                try:
+                    with open(bot.paths['csv'], 'a', newline='') as f:
+                        writer = csv.writer(f)
+                        writer.writerow([completed, f"{win_rate_bloco:.1f}", f"{bot.brain.epsilon:.3f}", f"{bot.total_reward_sum:.0f}", bot.aborted_battles])
+                except: pass
+                
+                # Reseta as vitórias do bloco e salva a Q-Table
+                bot.block_wins = 0
+                bot.save_brain_silently()
+                        
     except KeyboardInterrupt:
         print("\n\n[!] Interrompido pelo usuário. Salvando...")
+        
     finally:
         bot.check_finished_battles()
         bot.save_brain_silently()
