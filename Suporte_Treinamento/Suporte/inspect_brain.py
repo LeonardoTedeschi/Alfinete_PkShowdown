@@ -8,24 +8,31 @@ from datetime import datetime
 
 # --- CONFIGURAÇÃO DE CAMINHOS ---
 BRAIN_DIR = r"C:\Projetos Robotica Computacional\Projeto Showdown IA Pokemon\Bot-QV-Pokemon\Instinto"
-BRAIN_FILE = os.path.join(BRAIN_DIR, "blue_brain_v10.pkl")
+BRAIN_FILE = os.path.join(BRAIN_DIR, "blue_brain.pkl")
 
-SUPPORT_DIR = r"C:\Projetos Robotica Computacional\Projeto Showdown IA Pokemon\Bot-QV-Pokemon\Suporte_Treinamento\Suporte"
-LOG_DIR = os.path.join(SUPPORT_DIR, "logs_tese")
+# Define o diretório de logs dentro da própria pasta Instinto
+LOG_DIR = os.path.join(BRAIN_DIR, "logs_analise")
 
 if not os.path.exists(LOG_DIR):
     os.makedirs(LOG_DIR)
 
-# Ações V_6 (18 ações ramificadas)
-BLUE_ACTIONS = [
+if not os.path.exists(LOG_DIR):
+    os.makedirs(LOG_DIR)
+
+BASE_ACTIONS = [
     "ATTACK_STRONG", "ATTACK_PREDICTIVE", "ATTACK_PIVOT", "ATTACK_TECH", 
-    "ATTACK_MEC", "BUFF", "STATUS", "HEAL", "CLEAN_HAZARD", 
+    "BUFF", "STATUS", "HEAL", "CLEAN_HAZARD", 
     "PROTECT", "DEBUFF", "STAT_CLEAN", "HEAL_STATUS", "PHAZE", 
     "FIELD_CONTROL", "HAZARD", "SWITCH_DEFENSIVE", "SWITCH_OFFENSIVE"
 ]
 
+BLUE_ACTIONS = []
+for act in BASE_ACTIONS:
+    BLUE_ACTIONS.append(act)
+    if "SWITCH" not in act:
+        BLUE_ACTIONS.append(f"{act}_MEC")
+
 def decode_state_blue_exact(state_tuple):
-    """Extração à prova de falhas: resolve tuplas aninhadas e formata strings longas"""
     try:
         def flatten(t):
             if isinstance(t, (tuple, list, np.ndarray)):
@@ -33,51 +40,31 @@ def decode_state_blue_exact(state_tuple):
                     yield from flatten(item)
             else:
                 yield t
-        
         s = list(flatten(state_tuple))
-        
-        while len(s) < 14:
-            s.append("?")
+        while len(s) < 15: s.append("?") # Atualizado para 15 dimensões
             
-        # Simplificação de strings para economizar espaço
         my_role = str(s[0]).replace('SPEED_SWEEPER', 'SWEEPER').replace('TANK_BULK', 'TANK')
         opp_role = str(s[1]).replace('SPEED_SWEEPER', 'SWEEPER').replace('TANK_BULK', 'TANK')
         matchup = str(s[2]).replace('OFFENSIVE_', 'OFF_').replace('DEFENSIVE_', 'DEF_')
-        my_hp = str(s[3])
-        opp_hp = str(s[4])
-        weather = str(s[5])
-        speed_tier = str(s[6])
-        status_my = str(s[7])
-        status_opp = str(s[8])
-        boost_my = str(s[9])
-        boost_opp = str(s[10])
-        hazard_my = str(s[11])
-        hazard_opp = str(s[12])
-        mechanic = str(s[13])
         
         return [
-            f"{my_role} v {opp_role}",
-            matchup,
-            f"{my_hp} v {opp_hp}",
-            speed_tier,
-            f"{status_my} v {status_opp}",
-            f"{boost_my} v {boost_opp}",
-            f"{hazard_my} v {hazard_opp}",
-            weather,
-            mechanic
+            f"{my_role} v {opp_role}", matchup, f"{s[3]} v {s[4]}", 
+            str(s[6]), f"{s[7]} v {s[8]}", f"{s[9]} v {s[10]}", 
+            f"{s[11]} v {s[12]}", str(s[5]), str(s[13]), str(s[14]) # Adicionada a posição s[14]
         ]
     except Exception as e:
-        return [f"ERR: {str(e)[:10]}"] * 9
+        return [f"ERR"] * 10
 
-def generate_dashboard(df, action_counts, filename):
-    fig = plt.figure(figsize=(26, 14)) 
-    gs = GridSpec(2, 1, height_ratios=[1, 4], hspace=0.1)
+def generate_dashboard(df, action_counts, visit_stats, filename):
+    fig = plt.figure(figsize=(26, 16)) 
+    # Adicionamos uma coluna para o histograma de visitas
+    gs = GridSpec(2, 2, height_ratios=[1.2, 4], width_ratios=[1, 1.2], hspace=0.15)
     fig.patch.set_facecolor('#f4f4f9')
 
-    plt.suptitle(f"ANÁLISE DO MODELO BLUE (V6 - 18 AÇÕES) - {datetime.now().strftime('%d/%m/%Y %H:%M')}", 
-                 fontsize=20, weight='bold', color='#333333', y=0.96)
+    plt.suptitle(f"ANÁLISE DO MODELO BLUE - {datetime.now().strftime('%d/%m/%Y %H:%M')}", 
+                 fontsize=22, weight='bold', color='#333333', y=0.96)
 
-    # 1. Pizza
+    # 1. Pizza de Ações (Esquerda Superior)
     ax1 = fig.add_subplot(gs[0, 0])
     labels = ['Ataque', 'Troca', 'Suporte']
     sizes = [action_counts['attack'], action_counts['switch'], action_counts['support']]
@@ -90,26 +77,36 @@ def generate_dashboard(df, action_counts, filename):
     if sum(sizes) > 0:
         ax1.pie(filtered_sizes, labels=filtered_labels, colors=filtered_colors, autopct='%1.1f%%', startangle=90, 
                 wedgeprops={'edgecolor': 'black'}, textprops={'weight': 'bold', 'fontsize': 11})
-        ax1.set_title("Proporção de Melhores Ações Otimizadas", fontsize=14, weight='bold', pad=10)
+        ax1.set_title("Proporção de Melhores Ações", fontsize=14, weight='bold', pad=10)
         ax1.set_aspect('equal')
-    else:
-        ax1.text(0.5, 0.5, "Q-Table Vazia", ha='center', va='center')
-        ax1.axis('off')
 
-    # 2. Tabela de Dados (Top 20)
-    ax2 = fig.add_subplot(gs[1, 0])
+    # 2. Histograma de Visitas (Direita Superior)
+    ax3 = fig.add_subplot(gs[0, 1])
+    bars = ['1 Visita', '2 a 4 Visitas\n(Mestre-Aluno)', '5 a 19 Visitas\n(Exploração)', '20+ Visitas\n(Maduro)']
+    counts = [visit_stats['1'], visit_stats['2_4'], visit_stats['5_19'], visit_stats['20+']]
+    bar_colors = ['#ff6666', '#ffcc66', '#99ccff', '#66cc66']
+    
+    x_pos = np.arange(len(bars))
+    ax3.bar(x_pos, counts, color=bar_colors, edgecolor='black')
+    ax3.set_xticks(x_pos)
+    ax3.set_xticklabels(bars, fontsize=10, weight='bold')
+    ax3.set_title("Profundidade de Aprendizado (Frequência de Visitas)", fontsize=14, weight='bold', pad=10)
+    ax3.set_ylabel("Quantidade de Estados", fontsize=12, weight='bold')
+    
+    for i, v in enumerate(counts):
+        pct = (v / max(1, sum(counts))) * 100
+        ax3.text(i, v + (max(counts)*0.02), f"{v}\n({pct:.1f}%)", ha='center', va='bottom', weight='bold')
+
+    # 3. Tabela de Dados (Embaixo, ocupando tudo)
+    ax2 = fig.add_subplot(gs[1, :])
     ax2.axis('tight')
     ax2.axis('off')
     
     table_data = df.values.tolist()
     col_labels = df.columns.tolist()
+    col_widths = [0.04, 0.05, 0.10, 0.11, 0.07, 0.08, 0.06, 0.09, 0.09, 0.07, 0.06, 0.08, 0.08]
     
-    # Balanceamento das 11 colunas
-    col_widths = [0.05, 0.10, 0.13, 0.10, 0.10, 0.07, 0.11, 0.11, 0.10, 0.07, 0.06]
-    
-    the_table = ax2.table(cellText=table_data, colLabels=col_labels, loc='center', 
-                          cellLoc='center', colWidths=col_widths, bbox=[0, 0, 1, 1])
-    
+    the_table = ax2.table(cellText=table_data, colLabels=col_labels, loc='center', cellLoc='center', colWidths=col_widths, bbox=[0, 0, 1, 1])
     the_table.auto_set_font_size(False)
     the_table.set_fontsize(9) 
     the_table.scale(1, 1.8)
@@ -119,15 +116,12 @@ def generate_dashboard(df, action_counts, filename):
             cell.set_text_props(color='white', weight='bold')
             cell.set_facecolor("#2c3e50")
         else:
-            action_text = table_data[i-1][1]
-            if "ATTACK" in action_text: 
-                cell.set_facecolor("#ffe6e6")
-            elif "SWITCH" in action_text: 
-                cell.set_facecolor("#e6f2ff")
-            else: 
-                cell.set_facecolor("#e6ffe6")
+            action_text = table_data[i-1][2]
+            if "ATTACK" in action_text: cell.set_facecolor("#ffe6e6")
+            elif "SWITCH" in action_text: cell.set_facecolor("#e6f2ff")
+            else: cell.set_facecolor("#e6ffe6")
 
-    ax2.set_title("Top 20 Estados Aprendidos (Raw Mapping)", fontsize=16, weight='bold', pad=15)
+    ax2.set_title("Top 20 Estados Mais Otimizados", fontsize=16, weight='bold', pad=15)
     
     plt.subplots_adjust(top=0.90, bottom=0.05, left=0.02, right=0.98)
     plt.savefig(filename, dpi=150, bbox_inches='tight')
@@ -142,89 +136,88 @@ def analyze_brain():
         print(f"ERRO: Arquivo não encontrado em {BRAIN_FILE}")
         return
 
+    # Nova verificação: Impede a leitura se o arquivo estiver temporariamente zerado
+    tamanho_arquivo = os.path.getsize(BRAIN_FILE)
+    if tamanho_arquivo == 0:
+        print("ERRO DE LEITURA: O arquivo blue_brain.pkl está com 0 bytes no momento.")
+        print("Ação: O bot provavelmente está sobrescrevendo o arquivo agora. Aguarde alguns segundos e execute novamente.")
+        return
+
     try:
         with open(BRAIN_FILE, "rb") as f:
             data = pickle.load(f)
         
         q_table = data.get("q_table", {})
+        visit_counts = data.get("visit_counts", {})
         epsilon = data.get("epsilon", -1)
 
-        states_dense = {}
-        for state, q_values_array in q_table.items():
-            if isinstance(q_values_array, (list, np.ndarray)):
-                states_dense[state] = np.array(q_values_array)
-
-        total_states = len(states_dense)
+        total_states = len(q_table)
         if total_states == 0:
             print("AVISO: A Q-Table extraída está vazia.")
             return
 
-        positive_states = 0
-        negative_states = 0
-        ranked_states = []
-        action_counts = {'attack': 0, 'switch': 0, 'support': 0}
+        # Estatísticas de Visita
+        visit_stats = {'1': 0, '2_4': 0, '5_19': 0, '20+': 0}
+        for v in visit_counts.values():
+            if v == 1: visit_stats['1'] += 1
+            elif 2 <= v <= 4: visit_stats['2_4'] += 1
+            elif 5 <= v <= 19: visit_stats['5_19'] += 1
+            else: visit_stats['20+'] += 1
 
-        for state, values in states_dense.items():
+        action_counts = {'attack': 0, 'switch': 0, 'support': 0}
+        ranked_states = []
+
+        for state, values_list in q_table.items():
+            values = np.array(values_list)
             max_val = np.max(values)
             best_action = np.argmax(values)
             
-            # Ajuste correto pelos novos índices de BLUE_ACTIONS
-            if best_action in [0, 1, 2, 3, 4]: # Variações de ATTACK
+            act_name = BLUE_ACTIONS[best_action] if best_action < len(BLUE_ACTIONS) else "UNKNOWN"
+            
+            # Conta com base no NOME da ação, independentemente do índice matemático
+            if "ATTACK" in act_name: 
                 action_counts['attack'] += 1
-            elif best_action in [16, 17]: # Variações de SWITCH
+            elif "SWITCH" in act_name: 
                 action_counts['switch'] += 1
-            else: # Ações de Suporte (índices 5 ao 15)
+            else: 
                 action_counts['support'] += 1
             
-            if max_val > 0: positive_states += 1
-            else: negative_states += 1
-            
-            ranked_states.append((max_val, state, best_action))
+            visits = visit_counts.get(state, 0)
+            ranked_states.append((max_val, visits, state, best_action))
 
+        # Ordena pelo maior Q-Value para mostrar na tabela
         ranked_states.sort(key=lambda x: x[0], reverse=True)
         top_20 = ranked_states[:20]
 
         export_data = []
-        for val, state, action in top_20:
+        for val, visits, state, action in top_20:
             state_cols = decode_state_blue_exact(state)
-            act_name = BLUE_ACTIONS[action] if action < len(BLUE_ACTIONS) else f"UNKNOWN ({action})"
+            act_name = BLUE_ACTIONS[action] if action < len(BLUE_ACTIONS) else f"UNKNOWN"
             
             export_data.append({
+                "Visitas": visits,
                 "Q-Value": f"{val:.2f}",
                 "Ação": act_name,
-                "Roles (My v Opp)": state_cols[0],
+                "Roles": state_cols[0],
                 "Matchup": state_cols[1],
-                "HP (My v Opp)": state_cols[2],
+                "HP": state_cols[2],
                 "Speed": state_cols[3],
-                "Status (My v Opp)": state_cols[4],
-                "Boosts (My v Opp)": state_cols[5],
-                "Hazards (My v Opp)": state_cols[6],
+                "Status": state_cols[4],
+                "Boosts": state_cols[5],
+                "Hazards": state_cols[6],
                 "Clima": state_cols[7],
-                "Mecânica": state_cols[8]
+                "Mecânica": state_cols[8],
+                "Contexto": state_cols[9] 
             })
             
         df_top20 = pd.DataFrame(export_data)
         base_name = os.path.join(LOG_DIR, f"analise_blue_{timestamp}")
         
-        generate_dashboard(df_top20, action_counts, f"{base_name}_dashboard.png")
-        
-        with open(f"{base_name}_report.txt", "w", encoding='utf-8') as f:
-            f.write(f"RELATÓRIO DE TREINAMENTO (MODELO BLUE V6) - {timestamp}\n")
-            f.write("="*50 + "\n\n")
-            f.write(f"Total de Estados Únicos: {total_states}\n")
-            f.write(f"Taxa de Exploração (Epsilon): {epsilon:.5f}\n")
-            f.write(f"Estados Otimistas (Q > 0): {positive_states}\n")
-            f.write(f"Estados Pessimistas (Q <= 0): {negative_states}\n\n")
-            f.write("TOP 20 ESTADOS:\n")
-            f.write(df_top20.to_string())
-            
-        print(f"[RELATÓRIO] Dashboard e Log salvos em: logs_tese")
-        print("Processo finalizado com sucesso.")
+        generate_dashboard(df_top20, action_counts, visit_stats, f"{base_name}_dashboard.png")
+        print(f"[RELATÓRIO] Concluído! Verifique a pasta logs_tese.")
 
     except Exception as e:
-        print(f"ERRO FATAL DURANTE EXECUÇÃO: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"ERRO: {e}")
 
 if __name__ == "__main__":
     analyze_brain()

@@ -1,3 +1,6 @@
+# Arquivo: night_train.py
+# Foco: Sincronização com o gerenciamento autônomo de fases do BlueBrain
+
 import subprocess
 import time
 import shutil
@@ -15,46 +18,43 @@ SUMMARY_PATH = os.path.join(INSTINTO_DIR, "last_session_summary.json")
 CSV_LOG_DIR = os.path.join(INSTINTO_DIR, "logs")
 os.makedirs(CSV_LOG_DIR, exist_ok=True)
 
-# Nome padronizado para o cérebro congelado do self-play
 FROZEN_PATH = os.path.join(INSTINTO_DIR, "frozen_blue_brain.pkl")
 
 # --- CONFIGURAÇÃO DO CIRCUITO ---
+# Observação: 'epsilon_start' foi removido, pois o BlueBrain agora gerencia
+# tanto o epsilon quanto o alpha dinamicamente via 'enter_phase()'.
 CIRCUIT = {
     "maxdamage": {
         "opponent": "maxdamage",
-        "target_wr": 0.75,
+        "target_wr": 0.60,       
         "patience": 2,
         "max_sessions": 6,
         "n_battles": 10000,
-        "epsilon_start": 0.35,
         "brain_suffix": "maxdamage"
     },
     "instinct": {
         "opponent": "instinct",
-        "target_wr": 0.60,
+        "target_wr": 0.65,       
         "patience": 3,
         "max_sessions": 10,
         "n_battles": 10000,
-        "epsilon_start": 0.30,
         "brain_suffix": "instinct"
     },
     "selfplay_v1": {
         "opponent": "selfplay_frozen",
-        "target_wr": 0.52,
+        "target_wr": 0.53,       
         "patience": 4,
         "max_sessions": 15,
         "n_battles": 10000,
-        "epsilon_start": 0.20,
         "brain_suffix": "selfplay",
         "update_frozen_every": 3
     },
     "selfplay_v2": {
         "opponent": "selfplay_frozen",
-        "target_wr": 0.52,
+        "target_wr": 0.52,       
         "patience": 5,
         "max_sessions": 20,
         "n_battles": 10000,
-        "epsilon_start": 0.10,
         "brain_suffix": "selfplay_final",
         "update_frozen_every": 3
     }
@@ -86,7 +86,6 @@ def backup_brain(source_name, suffix):
     return dst
 
 def create_or_update_frozen(brain_filename="blue_brain.pkl"):
-    """Cria ou sobrescreve o frozen brain com o cérebro atual."""
     src = os.path.join(INSTINTO_DIR, brain_filename)
     if not os.path.exists(src):
         log_msg(f"AVISO: Cérebro fonte não encontrado: {src}")
@@ -98,23 +97,25 @@ def create_or_update_frozen(brain_filename="blue_brain.pkl"):
 def write_circuit_config(phase_key, session_num, frozen_brain=None):
     cfg = CIRCUIT[phase_key]
 
+    # Limpamos a phase_key para enviar um nome reconhecível para enter_phase() do BlueBrain
+    clean_phase = phase_key.replace("_v1", "").replace("_v2", "")
+
     config = {
-        "phase": phase_key.replace("_v1", "").replace("_v2", ""),
+        "phase": clean_phase,
         "opponent": cfg["opponent"],
         "n_battles": cfg["n_battles"],
         "session_number": session_num,
-        "brain_filename": "blue_brain.pkl", # Nome limpo e padronizado
+        "brain_filename": "blue_brain.pkl", 
         "frozen_brain": frozen_brain,
         "target_wr": cfg["target_wr"],
         "patience": cfg["patience"],
-        "epsilon_override": cfg.get("epsilon_start"),
         "block_size": 500
     }
 
     with open(CONFIG_PATH, "w") as f:
         json.dump(config, f, indent=2)
 
-    log_msg(f"Config escrita: fase={phase_key} | oponente={cfg['opponent']} | sessão={session_num}")
+    log_msg(f"Config escrita: fase={clean_phase} | oponente={cfg['opponent']} | sessão={session_num}")
 
 def run_session():
     inicio = time.time()
@@ -129,6 +130,9 @@ def run_session():
         return True, tempo
     except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as e:
         log_msg(f"ERRO/TIMEOUT na sessão: {e}")
+        return False, 0.0
+    except KeyboardInterrupt:
+        log_msg("Treinamento abortado manualmente pelo usuário (Ctrl+C).")
         return False, 0.0
 
 def main():
@@ -163,9 +167,6 @@ def main():
         progress["phase_sessions"] += 1
         session_num = progress["total_sessions"]
 
-        # Removido: backup_brain("blue_brain.pkl", f"pre_sessao_{session_num}")
-        # Lógica de backups de segurança movida apenas para o final de cada fase concluída.
-
         frozen_to_use = None
         if "selfplay" in current_phase_key:
             if not progress.get("frozen_created", False):
@@ -185,7 +186,7 @@ def main():
         success, tempo = run_session()
 
         if not success:
-            log_msg("Sessão falhou. Tentando novamente na próxima iteração...")
+            log_msg("Sessão falhou ou abortada. Checando próxima iteração...")
             time.sleep(5)
             continue
 
@@ -199,7 +200,7 @@ def main():
 
             if progress["stable_sessions"] >= cfg["patience"]:
                 log_msg(f"=== TRANSIÇÃO: {current_phase_key} CONCLUÍDA ===")
-                backup_brain("blue_brain.pkl", cfg["brain_suffix"]) # Backup de fase concluída
+                backup_brain("blue_brain.pkl", cfg["brain_suffix"]) 
 
                 progress["current_phase_idx"] += 1
                 progress["phase_sessions"] = 0

@@ -24,19 +24,12 @@ class MatchupState(Enum):
     CRITICAL_DIS = 9   # NVE vs SE
 
 class TacticalMode(Enum):
-    """
-    4 Modos Táticos que refletem o instinto do comandante.
-
-    PRESS   = Ataque direto. Matar ou quebrar. Não desperdiçar turno.
-    CONTEST = Disputa aberta. Speed é lei. Avaliar risco a cada turno.
-    GRIND   = Setup, attrition, stall. Hazard/Buff/Debuff/Heal/Status.
-              Quando não tem opção de troca, desgasta pouco a pouco.
-    ESCAPE  = Sair imediatamente. Defesa errada, 4x fraco, ou sem pressão.
-    """
     PRESS = 1
     CONTEST = 2
     GRIND = 3
     ESCAPE = 4
+    LEAD = 5
+    WALLBREAK = 6
 
 class MoveCategory(Enum):
     ATTACK_STRONG = 1
@@ -54,9 +47,11 @@ class MoveCategory(Enum):
     PHAZE = 13
     FIELD_CONTROL = 14
     HAZARD = 15
-    SWITCH_DEFENSIVE = 16
-    SWITCH_OFFENSIVE = 17
-    UNKNOWN = 18
+    BARRIER = 16
+    SWITCH_DEFENSIVE = 17
+    SWITCH_OFFENSIVE = 18
+    UNKNOWN = 19
+    
 
 # =============================================================================
 # 2. O CÉREBRO ESPECIALISTA (CORE) — ARQUITETURA DE 3 CAMADAS
@@ -100,13 +95,26 @@ class InstinctCore:
                 "ATTACK_TECH", "STATUS", "DEBUFF", "STAT_CLEAN", "PHAZE", 
                 "HEAL", "CLEAN_HAZARD", "HEAL_STATUS", "FIELD_CONTROL", 
                 "HAZARD", "BUFF", "ATTACK_STRONG", "ATTACK_PREDICTIVE"
+            ],
+
+            TacticalMode.LEAD: [
+                "HAZARD", "FIELD_CONTROL", "ATTACK_PIVOT", "DEBUFF", 
+                "ATTACK_STRONG", "BUFF", "STATUS", "PROTECT", 
+                "CLEAN_HAZARD", "SWITCH_DEFENSIVE", "SWITCH_OFFENSIVE",
+                "ATTACK_PREDICTIVE", "ATTACK_TECH", "STAT_CLEAN", "HEAL_STATUS", "PHAZE"
+            ],
+        
+            TacticalMode.WALLBREAK: [
+                "ATTACK_TECH", "STATUS", "BUFF", "ATTACK_PIVOT",
+                "DEBUFF", "HAZARD", "ATTACK_STRONG", "ATTACK_PREDICTIVE",
+                "HEAL", "CLEAN_HAZARD", "PROTECT", "SWITCH_OFFENSIVE",
+                "STAT_CLEAN", "HEAL_STATUS", "PHAZE", "FIELD_CONTROL", "SWITCH_DEFENSIVE"
             ]
         }
 
         # =====================================================================
         # CAMADA 3: MODIFICADORES POR ROLE
         # Cada função recebe o template base e o contexto completo.
-        # Retorna a lista REORDENADA para refletir o instinto do comandante.
         # =====================================================================
         self.role_modifiers = {
             (Role.SWEEPER, Role.SWEEPER): self._mod_sweeper_vs_sweeper,
@@ -134,8 +142,8 @@ class InstinctCore:
     def get_opp_hp_bucket(self, pokemon):
         if not pokemon or pokemon.fainted: return "CRIT" 
         hp = pokemon.current_hp_fraction
-        if hp >= 0.6: return "HIGH"
-        if hp >= 0.3: return "MID"
+        if hp >= 0.7: return "FULL"
+        if hp >= 0.35: return "MED"
         return "CRIT"
 
     def get_weather_state(self, battle):
@@ -189,14 +197,18 @@ class InstinctCore:
     def _get_hazard_damage(self, candidate, battle):
         dmg = 0.0
         cond_keys = [str(k).upper() for k in battle.side_conditions.keys()]
-        cand_types_str = [str(t).split('.')[-1].upper() for t in candidate.types if t]
+        
+        # Uso elegante do Enum (t.name)
+        cand_types_str = [t.name for t in candidate.types if t]
         
         if 'STEALTH_ROCK' in cond_keys: 
-            valid_types = [t for t in candidate.types if t is not None]
-            if valid_types:
-                PokemonTypeEnum = type(valid_types[0])
-                rock_enum = getattr(PokemonTypeEnum, 'ROCK', None)
-                if rock_enum: dmg += 0.125 * candidate.damage_multiplier(rock_enum)
+            for t in candidate.types:
+                if t:
+                    PokemonTypeEnum = type(t)
+                    rock_enum = getattr(PokemonTypeEnum, 'ROCK', None)
+                    if rock_enum: 
+                        dmg += 0.125 * candidate.damage_multiplier(rock_enum)
+                        break
             
         if 'SPIKES' in cond_keys and 'FLYING' not in cand_types_str and str(candidate.ability).lower() != 'levitate':
             layers = int(battle.side_conditions.get('spikes', 1))
@@ -245,12 +257,32 @@ class InstinctCore:
 
         return available_list
 
+    def _is_active_best_remaining(self, active, opponent, battle):
+        if not battle.available_switches:
+            return True
+
+        # Pontua o quão "ferrado" o Pokémon ativo está
+        active_score = self._get_survival_score(active, opponent, battle, is_active=True)
+
+        best_bench_score = -9999
+        for bench_mon in battle.available_switches:
+            bench_score = self._get_survival_score(bench_mon, opponent, battle, is_active=False)
+            if bench_score > best_bench_score:
+                best_bench_score = bench_score
+
+        # A Regra de Ouro: Só fugimos se o banco for CONSIDERAVELMENTE mais seguro.
+        # Uma margem de 50 pontos evita que o bot troque de um Pokémon ruim para outro ruim.
+        if best_bench_score > active_score + 50:
+            return False
+
+        return True
+
     def get_state(self, battle):
         active = battle.active_pokemon
         opponent = battle.opponent_active_pokemon
 
         if not active or not opponent:
-            return ("UNKNOWN",) * 14
+            return ("UNKNOWN",) * 15
         
         my_role = self.get_role(active).name
         opp_role = self.get_role(opponent).name
@@ -260,17 +292,18 @@ class InstinctCore:
             my_role,
             opp_role,
             matchup,
-            self.get_hp_bucket(active),                
-            self.get_opp_hp_bucket(opponent),          
+            self.get_hp_bucket(active),
+            self.get_opp_hp_bucket(opponent),
             self.get_weather_state(battle),
             self.get_speed_tier(battle),
-            self.get_status_state(active),              
-            self.get_status_state(opponent),            
-            self.get_boost_state(active),               
-            self.get_boost_state(opponent),             
-            self.get_hazard_state(battle.side_conditions),         
+            self.get_status_state(active),
+            self.get_status_state(opponent),
+            self.get_boost_state(active),
+            self.get_boost_state(opponent),
+            self.get_hazard_state(battle.side_conditions),
             self.get_hazard_state(battle.opponent_side_conditions),
-            self.get_mechanic_state(battle) 
+            self.get_mechanic_state(battle),
+            self.get_macro_context(battle)
         )
 
     # =========================================================================
@@ -345,11 +378,22 @@ class InstinctCore:
             
         return int(val * item_mod)
 
-    def estimate_damage_percent(self, move, attacker, defender):
+    def estimate_damage_percent(self, move, attacker, defender, battle=None):
         if move.category.name == "STATUS" or move.base_power == 0: return 0.0
             
         bp = float(move.base_power)
+        level = float(getattr(attacker, 'level', 100))
         
+        # --- 1. ATUALIZAÇÃO MULTI-HIT ---
+        multi_hit_moves = ['iciclespear', 'rockblast', 'bulletseed', 'tailslap', 'pinmissile', 'boneclub', 'scaleshot', 'watershuriken']
+        if move.id in multi_hit_moves:
+            attacker_ability = str(getattr(attacker, 'ability', '')).lower()
+            if attacker_ability == 'skilllink':
+                bp *= 5.0  # Dano máximo garantido
+            else:
+                bp *= 3.0  # Dano médio esperado (3 hits)
+
+        # Identificação de Atributos Ofensivos/Defensivos
         if move.category.name == "PHYSICAL":
             atk = self.estimate_stat(attacker, 'atk')
             if move.id == 'bodypress': atk = self.estimate_stat(attacker, 'def')
@@ -357,15 +401,68 @@ class InstinctCore:
         else:
             atk = self.estimate_stat(attacker, 'spa')
             defense = self.estimate_stat(defender, 'spd')
-            if move.id in ['psyshock', 'psystrike', 'secretsword']: defense = self.estimate_stat(defender, 'def')
+            if move.id in ['psyshock', 'psystrike', 'secretsword']: 
+                defense = self.estimate_stat(defender, 'def')
                 
         if defense <= 0: defense = 1
         
-        base_dmg = (42.0 * bp * (atk / defense)) / 50.0 + 2.0
+        base_dmg = ((((2 * level / 5) + 2) * atk * bp / defense) / 50) + 2
+        
         stab = 1.5 if move.type in attacker.types else 1.0
         type_mod = defender.damage_multiplier(move)
         
-        final_dmg = base_dmg * stab * type_mod
+        margin = 0.95
+        
+        # --- 2. ATUALIZAÇÃO: GOLPES DE 2 TURNOS E HERB ---
+        charge_moves = ['fly', 'bounce', 'dig', 'dive', 'phantomforce', 'shadowforce', 'solarbeam', 'solarblade', 'skullbash', 'meteorbeam']
+        recharge_moves = ['hyperbeam', 'gigaimpact', 'rockwrecker', 'roaroftime', 'frenzyplant', 'blastburn', 'hydrocannon']
+        
+        item_str = str(getattr(attacker, 'item', '')).lower()
+        weather = next(iter(battle.weather)).name if battle and battle.weather else "CLEAR"
+        known_opp_moves = [m.id for m in defender.moves.values()]
+        
+        if move.id in charge_moves:
+            is_instant = False
+            # Checa a Power Herb
+            if item_str == 'powerherb':
+                is_instant = True
+            # Checa o Clima para Solar Beam/Blade
+            elif move.id in ['solarbeam', 'solarblade'] and weather in ['SUNNYDAY', 'DESOLATELAND']:
+                is_instant = True
+                
+            if not is_instant:
+                # Debuff severo por dar um turno livre ao oponente para setup/troca
+                margin *= 0.4
+                
+                # Fraquezas táticas extremas durante o turno de invulnerabilidade
+                if move.id == 'dig' and 'earthquake' in known_opp_moves:
+                    margin *= 0.1 # Punição extrema (Leva dobro de dano no subsolo)
+                elif move.id in ['fly', 'bounce'] and any(m in known_opp_moves for m in ['thunder', 'hurricane']):
+                    margin *= 0.1 # Punição extrema (Leva dano garantido no ar)
+                    
+        elif move.id in recharge_moves:
+            # Golpes que travam o usuário APÓS o ataque sempre recebem penalidade tática pesada
+            # (Power Herb não afeta recargas!)
+            margin *= 0.45
+
+        ignores_screens = move.id in ['brickbreak', 'psychicfangs'] or str(getattr(attacker, 'ability', '')).lower() == 'infiltrator'
+        
+        if battle and not ignores_screens:
+            if defender in battle.team.values():
+                side_to_check = battle.side_conditions
+            else:
+                side_to_check = battle.opponent_side_conditions
+                
+            active_screens = [str(k).upper() for k in side_to_check.keys()]
+            
+            if move.category.name == "PHYSICAL":
+                if 'REFLECT' in active_screens or 'AURORA_VEIL' in active_screens:
+                    margin *= 0.5 
+            elif move.category.name == "SPECIAL":
+                if 'LIGHT_SCREEN' in active_screens or 'AURORA_VEIL' in active_screens:
+                    margin *= 0.5 
+        
+        final_dmg = base_dmg * stab * type_mod * margin
         max_hp = max(1, self.estimate_stat(defender, 'hp'))
         
         return final_dmg / max_hp
@@ -389,8 +486,9 @@ class InstinctCore:
         if move_id in ['raindance', 'sunnyday', 'sandstorm', 'hail', 'snowscape', 'trickroom', 'tailwind', 'electricterrain', 'grassyterrain', 'psychicterrain', 'mistyterrain']: return MoveCategory.FIELD_CONTROL
         if move_id in ['defog', 'rapidspin', 'mortalspin', 'courtchange']: return MoveCategory.CLEAN_HAZARD
         if move_id in ['stealthrock', 'spikes', 'toxicspikes', 'stickyweb']: return MoveCategory.HAZARD
-        if move_id in ['protect', 'detect', 'spikyshield', 'kingsshield', 'banefulbunker', 'burningbulwark', 'silktrap', 'safeguard']: return MoveCategory.PROTECT
+        if move_id in ['protect', 'detect', 'spikyshield', 'kingsshield', 'banefulbunker', 'burningbulwark', 'silktrap', 'obstruct', 'endure']: return MoveCategory.PROTECT
         if move_id in ['recover', 'roost', 'moonlight', 'slackoff', 'morningsun', 'synthesis', 'softboiled', 'milkdrink', 'shoreup', 'strengthsap']: return MoveCategory.HEAL
+        if move_id in ['reflect', 'lightscreen', 'auroraveil']: return MoveCategory.BARRIER
 
         if move.category.name == "STATUS":
             if getattr(move, 'heal', 0): return MoveCategory.HEAL
@@ -405,78 +503,247 @@ class InstinctCore:
 
         return MoveCategory.UNKNOWN
 
-    def is_move_useless(self, move, opp_pokemon, battle):
-        my_pokemon = battle.active_pokemon
-        if my_pokemon and move.id == 'substitute':
-            my_effects = [str(e).lower() for e in my_pokemon.effects]
-            if any('substitute' in e for e in my_effects): return True
+    def is_move_useless(self, move, opponent, battle, history=None):
+        if not move: return True
+        active = battle.active_pokemon
+        if not active or not opponent: return True
 
-        # === 1. BLOQUEIO DE CURA SE A VIDA ESTÁ CHEIA ===
-        if move.id in ['recover', 'roost', 'moonlight', 'slackoff', 'morningsun', 'synthesis', 'softboiled', 'milkdrink', 'shoreup']:
-            if my_pokemon and my_pokemon.current_hp_fraction == 1.0:
-                return True
-
-        # === 2. BLOQUEIO DE LIMPEZA DE HAZARD SEM HAZARDS ===
-        if move.id in ['defog', 'courtchange']:
-            if not battle.side_conditions and not battle.opponent_side_conditions:
-                return True
-
-        if not opp_pokemon: return False
-        
-        opp_types = [str(t).split('.')[-1].upper() for t in opp_pokemon.types if t]
-        move_id = move.id
-        move_type = str(move.type).split('.')[-1].upper() if move.type else "UNKNOWN"
-        
+        opp_types = [t.name for t in opponent.types if t]
         opp_abilities = []
-        if opp_pokemon.ability: opp_abilities = [str(opp_pokemon.ability).lower()]
-        elif opp_pokemon.possible_abilities: opp_abilities = [str(a).lower() for a in opp_pokemon.possible_abilities]
-
-        opp_effects = [str(effect).lower() for effect in opp_pokemon.effects]
-        if any('substitute' in e for e in opp_effects):
-            if move.category.name == 'STATUS' and move.target in ['normal', 'any', 'allAdjacentFoes', 'foeSide']: return True
-
-        if 'wonderguard' in opp_abilities:
-            if move.category.name in ['PHYSICAL', 'SPECIAL'] and move.base_power > 0:
-                if opp_pokemon.damage_multiplier(move) < 2.0: return True
-
-        type_absorb_map = {
-            'water': ['waterabsorb', 'dryskin', 'stormdrain'],
-            'ground': ['levitate'],
-            'grass': ['sapsipper'],
-            'fire': ['flashfire'],
-            'electric': ['voltabsorb', 'lightningrod', 'motordrive']
-        }
+        if opponent.ability:
+            opp_abilities = [str(opponent.ability).lower()]
+        elif opponent.possible_abilities:
+            opp_abilities = [str(a).lower() for a in opponent.possible_abilities]
         
-        if move.category.name in ['PHYSICAL', 'SPECIAL'] and move.base_power > 0:
-            if opp_pokemon.damage_multiplier(move) == 0: return True
-            for immune_type, abilities in type_absorb_map.items():
-                if move_type == immune_type.upper():
-                    if any(ab in opp_abilities for ab in abilities): return True
+        # --- 1. FILTRO DE DANO E IMUNIDADE ---
+        if move.base_power > 0:
+            if opponent.damage_multiplier(move) == 0:
+                return True
+            if 'wonderguard' in opp_abilities and opponent.damage_multiplier(move) < 2:
+                if move.id != 'struggle': return True
+                
+        # Golpe Terrestre vs Air Balloon (Exceção: Thousand Arrows)
+        if move.type and move.type.name == 'GROUND' and move.id != 'thousandarrows':
+            if opponent.item and str(opponent.item).lower() == 'airballoon':
+                return True
 
-        if move.category.name == 'STATUS':
-            if move.status and opp_pokemon.status: return True
+        # --- 2. LIMPEZA DE HAZARDS ---
+        if move.id in ['defog', 'rapidspin', 'mortalspin', 'tidyup', 'courtchange']:
+            my_side = battle.side_conditions
+            opp_side = battle.opponent_side_conditions
             
-            # === 3. PROTEÇÃO DE TERRENOS (Misty e Electric Terrain) ===
-            fields = [str(f).lower() for f in battle.fields.keys()]
-            opp_is_grounded = 'FLYING' not in opp_types and 'levitate' not in opp_abilities and 'magnetrise' not in opp_effects
+            has_hazard = False
+            target_hazards = ['STEALTH_ROCK', 'SPIKES', 'TOXIC_SPIKES', 'STICKY_WEB']
+            target_screens = ['REFLECT', 'LIGHT_SCREEN', 'AURORA_VEIL']
             
-            if opp_is_grounded:
-                if 'mistyterrain' in fields and move.status in ['psn', 'tox', 'brn', 'par', 'slp']:
+            for cond in my_side:
+                if cond.name in target_hazards:
+                    has_hazard = True
+                    break
+                    
+            if not has_hazard and move.id in ['defog', 'courtchange']:
+                for cond in opp_side:
+                    if cond.name in target_screens or cond.name in target_hazards:
+                        has_hazard = True
+                        break
+                        
+            if not has_hazard:
+                return True
+        # --- 3. PRIORIDADE, PRIMEIRO TURNO E FLINCH ---
+        move_priority = 0
+        try:
+            move_priority = move.priority
+        except (KeyError, AttributeError):
+            move_priority = 0
+
+        if move.id in ['fakeout', 'firstimpression']:
+            if not getattr(active, 'first_turn', False):
+                return True
+
+        if move_priority > 0:
+            if any(ab in opp_abilities for ab in ['dazzling', 'queenlymajesty', 'armortail']):
+                return True
+            if 'psychicsurge' in opp_abilities or any('psychicterrain' in str(f).lower() for f in battle.fields.keys()):
+                if 'FLYING' not in opp_types and not (opponent.item and str(opponent.item).lower() == 'airballoon') and 'levitate' not in opp_abilities:
                     return True
-                if 'electricterrain' in fields and move.status == 'slp':
+        
+        # --- 4. FILTRO DE STATUS E IMUNIDADES ---
+        if move.category.name == "STATUS":
+            # Prankster vs Noturnos
+            if active.ability == 'prankster' and 'DARK' in opp_types: return True
+                
+            # Powders vs Planta / Overcoat
+            if move.id in ['spore', 'sleeppowder', 'stunspore', 'poisonpowder', 'ragepowder']:
+                if 'GRASS' in opp_types or 'overcoat' in opp_abilities: return True
+                    
+            if move.id == 'thunderwave' and ('GROUND' in opp_types or 'ELECTRIC' in opp_types): return True
+            if move.id == 'leechseed' and 'GRASS' in opp_types: return True
+
+            # Refletores e Imunidades Totais (Magic Bounce / Good as Gold)
+            if any(ab in opp_abilities for ab in ['magicbounce']) and getattr(move, 'target', '') in ['normal', 'allAdjacentFoes', 'foeSide']: return True
+            if any(ab in opp_abilities for ab in ['goodasgold', 'magicguard']): return True 
+            if move.id in ['confuseray', 'swagger'] and any(ab in opp_abilities for ab in ['owntempo', 'oblivious']): return True
+
+            # Aplicação de Doenças
+            if move.status:
+                if opponent.status: return True # Já tem status
+                
+                # Prevenção de Suicídio via Synchronize
+                if 'synchronize' in opp_abilities:
+                    my_types = [t.name for t in active.types if t]
+                    if move.status.name in ['TOX', 'PSN'] and 'POISON' not in my_types and 'STEEL' not in my_types: return True
+                    if move.status.name == 'BRN' and 'FIRE' not in my_types: return True
+                    if move.status.name == 'PRZ' and 'ELECTRIC' not in my_types and 'GROUND' not in my_types: return True
+
+                if move.status.name in ['TOX', 'PSN']:
+                    if 'immunity' in opp_abilities: return True
+                    if 'POISON' in opp_types or 'STEEL' in opp_types:
+                        if active.ability != 'corrosion': return True
+                elif move.status.name == 'BRN':
+                    if 'FIRE' in opp_types or any(ab in opp_abilities for ab in ['waterveil', 'waterbubble']): return True
+                elif move.status.name == 'PRZ':
+                    if 'ELECTRIC' in opp_types or 'limber' in opp_abilities: return True
+                elif move.status.name == 'SLP':
+                    if any(ab in opp_abilities for ab in ['insomnia', 'vitalspirit', 'sweetveil']): return True
+
+        # --- 5. BUFFS MAXIMIZADOS E DEBUFFS ---
+        if move.category.name == "STATUS" and move.boosts:
+            # Pega o alvo padrão. Se for buff próprio ('self' ou equivalente)
+            if getattr(move, 'target', 'self') == 'self':
+                is_useful = False
+                for stat, boost_amount in move.boosts.items():
+                    current_stage = active.boosts.get(stat, 0)
+                    if boost_amount > 0: 
+                        # O limite hardcoded da mecânica do jogo é +6
+                        if current_stage < 6:
+                            is_useful = True
+                            break 
+                    elif boost_amount < 0: 
+                        is_useful = True 
+                        
+                if not is_useful: 
+                    return True
+                    
+            # Debuffs aplicados no oponente (ex: Screech)
+            elif getattr(move, 'target', 'normal') in ['normal', 'allAdjacentFoes']:
+                if any(ab in opp_abilities for ab in ['clearbody', 'whitesmoke', 'fullmetalbody']):
+                    if any(b < 0 for b in move.boosts.values()):
+                        return True
+
+        # --- 6. BARREIRAS, CONDIÇÕES DE CAMPO E CLIMA ---
+        current_weather = next(iter(battle.weather)).name if battle.weather else "CLEAR"
+        
+        if move.id in ['reflect', 'lightscreen', 'auroraveil', 'safeguard', 'tailwind']:
+            my_side = [str(k).upper() for k in battle.side_conditions.keys()]
+            if move.id == 'reflect' and 'REFLECT' in my_side: return True
+            if move.id == 'lightscreen' and 'LIGHT_SCREEN' in my_side: return True
+            if move.id == 'safeguard' and 'SAFEGUARD' in my_side: return True
+            if move.id == 'tailwind' and 'TAILWIND' in my_side: return True
+            if move.id == 'auroraveil':
+                if 'AURORA_VEIL' in my_side: return True
+                if current_weather not in ['HAIL', 'SNOW', 'SNOWSCAPE']: return True
+
+        weather_moves = ['raindance', 'sunnyday', 'sandstorm', 'hail', 'snowscape']
+        if move.id in weather_moves:
+            if move.id == 'raindance' and current_weather in ['RAINDANCE', 'PRIMORDIALSEA']: return True
+            if move.id == 'sunnyday' and current_weather in ['SUNNYDAY', 'DESOLATELAND']: return True
+            if move.id == 'sandstorm' and current_weather == 'SANDSTORM': return True
+            if move.id in ['hail', 'snowscape'] and current_weather in ['HAIL', 'SNOW', 'SNOWSCAPE']: return True
+
+        # --- 7. PREVENÇÃO DE PROTECT CONSECUTIVO ---
+        if move.id in ['protect', 'detect', 'spikyshield', 'kingsshield', 'banefulbunker', 'burningbulwark', 'silktrap', 'obstruct', 'endure']:
+            if history and 'last_action' in history:
+                last_action_tuple = history.get('last_action')
+                if last_action_tuple and "PROTECT" in last_action_tuple[0]:
                     return True
 
-            if move_id in ['toxic', 'poisonpowder', 'poisongas'] and ('STEEL' in opp_types or 'POISON' in opp_types): return True
-            if move_id == 'thunderwave' and ('GROUND' in opp_types or 'ELECTRIC' in opp_types): return True
-            if move_id == 'willowisp' and 'FIRE' in opp_types: return True
-            if move_id in ['leechseed', 'spore', 'sleeppowder', 'stunspore'] and 'GRASS' in opp_types: return True
-            if any(ab in opp_abilities for ab in ['magicbounce']) and move.target in ['normal', 'allAdjacentFoes', 'foeSide']: return True
-            if any(ab in opp_abilities for ab in ['immunity']) and move_id in ['toxic', 'poisongas']: return True
-            if any(ab in opp_abilities for ab in ['limber']) and move_id == 'thunderwave': return True
-            if any(ab in opp_abilities for ab in ['goodasgold']): return True 
+        # --- 8. CENÁRIO DE ÚLTIMO POKÉMON E PHAZING ---
+        opp_alive = len([m for m in battle.opponent_team.values() if not m.fainted])
+        
+        if move.id in ['roar', 'whirlwind', 'dragontail', 'circlethrow']:
+            if opp_alive <= 1: return True
+            if 'suctioncups' in opp_abilities: return True 
+
+        if move.id in ['stealthrock', 'spikes', 'toxicspikes', 'stickyweb'] and opp_alive <= 1:
+            return True
+
+        # --- 9. PREDICT DE HABILIDADES (ABILITY IMMUNITY) ---
+        # Bloqueia ataques diretos contra espécies que sabidamente possuem habilidades de absorção/imunidade no competitivo
+        if move.category in ["Physical", "Special"]:
+            opp_species = str(opponent.species).lower()
+            
+            # Water Absorb / Storm Drain / Dry Skin (Imunidade a Água)
+            if move.type.name == "WATER":
+                if opp_species in ['vaporeon', 'gastrodon', 'seismitoad', 'toxicroak', 'mantine', 'clodsire', 'volcanion']:
+                    return True
+                    
+            # Flash Fire / Well-Baked Body (Imunidade a Fogo)
+            elif move.type.name == "FIRE":
+                if opp_species in ['heatran', 'chandelure', 'arcanine', 'ceruledge', 'houndoom', 'dachsbun']:
+                    return True
+                    
+            # Volt Absorb / Motor Drive / Lightning Rod (Imunidade a Elétrico)
+            elif move.type.name == "ELECTRIC":
+                if opp_species in ['jolteon', 'thundurus', 'thundurustherian', 'zeraora', 'electivire', 'raichu', 'marowakalola']:
+                    return True
+                    
+            # Sap Sipper (Imunidade a Planta)
+            elif move.type.name == "GRASS":
+                if opp_species in ['azumarill', 'goodra', 'bouffalant']:
+                    return True
+                    
+            # Levitate / Earth Eater (Imunidade a Terra)
+            elif move.type.name == "GROUND":
+                if opp_species in ['rotom', 'rotomwash', 'rotomheat', 'rotommow', 'latios', 'latias', 'hydreigon', 'cresselia', 'weezing', 'orthworm']:
+                    return True
+            
+        # --- 10. CURA DESNECESSÁRIA (OVERHEAL) ---
+        # A. Bloqueia cura de HP se a vida estiver em 100% (ou muito próxima disso, >= 95%)
+        healing_moves = [
+            'recover', 'roost', 'slackoff', 'softboiled', 'milkdrink', 
+            'shoreup', 'moonlight', 'morningsun', 'synthesis', 'healorder', 'wish'
+        ]
+        if move.id in healing_moves or (hasattr(move, 'heal') and move.heal and move.category == "Status"):
+            if active.current_hp_fraction >= 0.95:
+                return True
+                
+        # B. Bloqueia cura de Status da equipe se ninguém estiver com Status negativo
+        if move.id in ['aromatherapy', 'healbell']:
+            team_has_status = any(m.status is not None for m in battle.team.values())
+            if not team_has_status:
+                return True
 
         return False
 
+    def get_macro_context(self, battle):
+        """
+        Funde o tempo de jogo e a contagem de peças (Vantagem) em 5 contextos vitais,
+        ignorando a flutuação de HP para evitar ruído.
+        """
+        my_alive = len([m for m in battle.team.values() if not m.fainted])
+        opp_alive = len([m for m in battle.opponent_team.values() if not m.fainted])
+        total_alive = my_alive + opp_alive
+        
+        piece_advantage = my_alive - opp_alive
+        
+        # 1. EARLY GAME (12 a 10 vivos)
+        # O jogo acabou de começar. Perder 1 Pokémon aqui não dita o jogo, é fase de mapeamento e Hazards.
+        if total_alive >= 10:
+            return "OPENING"
+            
+        # 2. VANTAGEM OU DESVANTAGEM NUMÉRICA CLARA
+        # O peso de ter peças a mais/menos sobrepõe qualquer noção de "Early/Mid/Late".
+        if piece_advantage >= 2:
+            return "DOMINATING"  # Bot tem 2+ Pokémon de vantagem. Foco em pressionar e não dar turnos livres.
+        elif piece_advantage <= -2:
+            return "RECOVERING"  # Bot tem 2+ Pokémon a menos. Jogo desesperado, focar em predict e setups de risco.
+            
+        # 3. JOGO PARELHO (Diferença de 1 peça ou menos)
+        if total_alive <= 5:
+            return "CLUTCH"      # Final de jogo equilibrado (ex: 3v2, 2v2, 1v2). Foco total em Checkmate.
+        else:
+            return "BRAWL"       # Mid-game sangrento (ex: 4v4, 5v4). Foco em quebrar os tanks e controle de campo.
+    
     def get_matchup_state(self, my_mon, opp_mon) -> MatchupState:
         if not my_mon or not opp_mon: return MatchupState.NEUTRAL
         
@@ -566,6 +833,89 @@ class InstinctCore:
         if target_hazard == 'TOXIC_SPIKES': return current_hazards.get('TOXIC_SPIKES', 0) >= 2
 
         return False
+
+    def _is_active_best_remaining(self, active, opponent, battle):
+
+        if not battle.available_switches:
+            return True
+
+        # 1. Calcula o score de sobrevivência do Pokémon que já está em campo
+        # (is_active=True indica que ele não sofrerá dano de entrada de Hazards)
+        active_score = self._get_survival_score(active, opponent, battle, is_active=True)
+
+        # 2. Avalia quem é o melhor candidato entre os Pokémon no banco
+        best_bench_score = -9999
+        for bench_mon in battle.available_switches:
+            bench_score = self._get_survival_score(bench_mon, opponent, battle, is_active=False)
+            if bench_score > best_bench_score:
+                best_bench_score = bench_score
+
+        # 3. Decisão Tática:
+        # Só consideramos que o ativo NÃO é a melhor opção se houver alguém 
+        # no banco com uma segurança (score) consideravelmente maior (+50).
+        # Isso evita trocas infinitas entre dois Pokémon ruins.
+        if best_bench_score > active_score + 50:
+            return False
+
+        return True
+
+    def _get_survival_score(self, candidate, opponent, battle, is_active=False):
+
+        if not candidate: return -9999
+        hp_frac = candidate.current_hp_fraction
+        
+        # Penalidade de entrada para quem está no banco (Hazards)
+        if not is_active:
+            hazard_dmg = self._get_hazard_damage(candidate, battle)
+            if hp_frac <= hazard_dmg + 0.05:
+                return -9999 # Morte certa na entrada
+                
+        score = 0.0
+        if hp_frac >= 0.7: score += 150
+        elif hp_frac >= 0.4: score += 50
+        else: score -= 100
+        
+        if not opponent: return score
+
+        opp_types_obj = [t for t in opponent.types if t]
+        known_opp_moves = [m for m in opponent.moves.values() if m.base_power > 0]
+        
+        # Avaliação de fraquezas contra o oponente atual
+        has_weakness = False
+        for opp_type in opp_types_obj:
+            mult = candidate.damage_multiplier(opp_type)
+            if mult > 1.0:
+                score -= 100 * mult
+                has_weakness = True
+            elif mult < 1.0:
+                score += 50 / max(mult, 0.1)
+
+        for move in known_opp_moves:
+            mult = candidate.damage_multiplier(move)
+            if mult > 1.0:
+                score -= 150 * mult
+                has_weakness = True
+            elif mult < 1.0:
+                score += 75 / max(mult, 0.1)
+
+        # Avaliação de Velocidade e Matchup
+        cand_spe = self.estimate_stat(candidate, 'spe')
+        opp_spe = self.estimate_stat(opponent, 'spe')
+        
+        if cand_spe > opp_spe:
+            score += 100
+            # Bônus se tiver um golpe super efetivo contra o oponente
+            has_se_move = any(m.base_power > 0 and opponent.damage_multiplier(m) > 1.5 for m in candidate.moves.values())
+            if has_se_move: score += 150
+        else:
+            if has_weakness: score -= 200
+
+        matchup = self.get_matchup_state(candidate, opponent)
+        if matchup == MatchupState.DOMINANT: score += 200
+        elif matchup == MatchupState.DEFENSIVE_ADV: score += 100
+        elif matchup == MatchupState.CRITICAL_DIS: score -= 300
+
+        return score
 
     # =========================================================================
     # HELPERS AUXILIARES DE ROLE
@@ -769,6 +1119,112 @@ class InstinctCore:
         if "DEBUFF" in modified: modified.insert(0, modified.pop(modified.index("DEBUFF")))
         return modified
 
+    def _mod_escape(self, base, active, opponent, is_faster, my_role, battle):
+        modified = base.copy()
+        
+        # Condição: Se a função acima disser que o banco não é seguro, nós ficamos para lutar!
+        if self._is_active_best_remaining(active, opponent, battle):
+            
+            # Removemos a obrigatoriedade de troca do topo
+            if "SWITCH_DEFENSIVE" in modified: modified.remove("SWITCH_DEFENSIVE")
+            if "SWITCH_OFFENSIVE" in modified: modified.remove("SWITCH_OFFENSIVE")
+            if "ATTACK_PIVOT" in modified: modified.remove("ATTACK_PIVOT")
+            
+            # 1. Se formos mais rápidos: prioridade máxima em causar dano antes de cair (Kamikaze)
+            if is_faster:
+                if "ATTACK_STRONG" in modified: modified.insert(0, modified.pop(modified.index("ATTACK_STRONG")))
+                if "ATTACK_TECH" in modified: modified.insert(1, modified.pop(modified.index("ATTACK_TECH")))
+            
+            # 2. Se formos um Tank: tentamos inutilizar o oponente com status
+            elif my_role == Role.TANK:
+                opp_is_physical = self._is_physical(opponent)
+                my_def = active.base_stats.get('def', 0)
+                my_spd = active.base_stats.get('spd', 0)
+                is_right_def = (opp_is_physical and my_def >= my_spd) or (not opp_is_physical and my_spd > my_def)
+                
+                # Só joga status se a defesa do tank estiver alinhada ao atacante inimigo
+                if is_right_def and "STATUS" in modified:
+                    modified.insert(0, modified.pop(modified.index("STATUS")))
+                elif "ATTACK_STRONG" in modified:
+                    modified.insert(0, modified.pop(modified.index("ATTACK_STRONG")))
+                    
+            # 3. Fallback genérico: Bater o mais forte possível
+            else:
+                if "ATTACK_STRONG" in modified: modified.insert(0, modified.pop(modified.index("ATTACK_STRONG")))
+                
+            # Recoloca as ações de fuga no fim da lista como último recurso absoluto
+            modified.extend(["ATTACK_PIVOT", "SWITCH_DEFENSIVE", "SWITCH_OFFENSIVE"])
+            
+        return modified
+
+    def _mod_lead(self, base, active, opponent, battle, is_faster):
+        modified = base.copy()
+        my_team = list(battle.team.values())
+        
+        # 1. Análise da dependência do time
+        weather_abusers = ['swiftswim', 'chlorophyll', 'sandrush', 'slushrush', 'sandforce', 'solarpower', 'hydration', 'drought', 'drizzle', 'sandstream', 'snowwarning']
+        team_needs_weather = any(str(m.ability).lower() in weather_abusers for m in my_team)
+        
+        avg_speed = sum(m.base_stats.get('spe', 50) for m in my_team) / len(my_team)
+        team_needs_tr = avg_speed < 70 # Time lento pede Trick Room (Field Control)
+        
+        needs_field_control = team_needs_weather or team_needs_tr
+        weather_active = battle.weather is not None and len(battle.weather) > 0
+        
+        matchup = self.get_matchup_state(active, opponent)
+        matchup_lost = matchup in [MatchupState.DEFENSIVE_DIS, MatchupState.CRITICAL_DIS, MatchupState.OFFENSIVE_DIS]
+        matchup_won = matchup in [MatchupState.DOMINANT, MatchupState.OFFENSIVE_ADV]
+
+        # 2. Execução das Condicionais
+        
+        # Condição C: Perdemos o matchup
+        if matchup_lost:
+            if is_faster and "ATTACK_PIVOT" in modified:
+                modified.insert(0, modified.pop(modified.index("ATTACK_PIVOT")))
+            elif not is_faster and "SWITCH_DEFENSIVE" in modified:
+                modified.insert(0, modified.pop(modified.index("SWITCH_DEFENSIVE")))
+            return modified
+
+        # Condição A: Dependência de Clima/Trick Room (Prioridade 1)
+        if needs_field_control and not weather_active:
+            if "FIELD_CONTROL" in modified:
+                modified.insert(0, modified.pop(modified.index("FIELD_CONTROL")))
+                
+        # Condição B: Clima Ativo + Vantagem de Matchup
+        elif weather_active and matchup_won:
+            if "HAZARD" in modified:
+                modified.insert(0, modified.pop(modified.index("HAZARD")))
+                
+        # Condição Extra: Clima Ativo + Vantagem de Speed
+        if weather_active and is_faster:
+            if "ATTACK_STRONG" in modified:
+                modified.insert(0, modified.pop(modified.index("ATTACK_STRONG")))
+
+        return modified
+
+    def _mod_wallbreak(self, base, active, opponent, is_faster, my_hp_frac, opp_hp_frac):
+        modified = base.copy()
+        
+        # 1. Se o oponente tem capacidade de cura, priorizamos ataques técnicos (Taunt/Knock Off) e Status
+        opponent_has_recovery = self._has_recovery(opponent)
+        if opponent_has_recovery:
+            if "STATUS" in modified:
+                modified.insert(0, modified.pop(modified.index("STATUS")))
+            if "ATTACK_TECH" in modified:
+                modified.insert(1, modified.pop(modified.index("ATTACK_TECH")))
+                
+        # 2. Se temos HP seguro e o oponente é passivo, é a janela perfeita para Buff
+        if "BUFF" in modified and my_hp_frac >= 0.60:
+            # Coloca o BUFF na frente se não for prioridade de status
+            insert_idx = 2 if opponent_has_recovery else 0
+            modified.insert(insert_idx, modified.pop(modified.index("BUFF")))
+            
+        # 3. Se nosso HP está baixo, não tentamos quebrar a wall, fazemos pivot para outro pokemon
+        if my_hp_frac < 0.40 and "ATTACK_PIVOT" in modified:
+            modified.insert(0, modified.pop(modified.index("ATTACK_PIVOT")))
+
+        return modified
+
     # =========================================================================
     # INTEGRAÇÃO DA ÁRVORE TÁTICA E ACTION MASKING
     # =========================================================================
@@ -795,23 +1251,35 @@ class InstinctCore:
         opp_hp_frac = opp.current_hp_fraction
         is_threat = self.is_threatening(active, opp)
 
-        # CAMADA 1: Matchup → TacticalMode
-        mode = self._get_tactical_mode(matchup, my_role, opp_role, 
-                                        is_faster, my_hp_frac, opp_hp_frac, is_threat, 
-                                        active, opp)
+        macro_context = self.get_macro_context(battle)
+        
+        # CAMADA 1: Matchup -> TacticalMode
+        if macro_context == "OPENING":
+            mode = TacticalMode.LEAD
+        else:
+            mode = self._get_tactical_mode(matchup, my_role, opp_role, 
+                                           is_faster, my_hp_frac, opp_hp_frac, is_threat, 
+                                           active, opp)
 
         # CAMADA 2: Template base do modo
         base_priorities = self.mode_templates[mode].copy()
 
         # CAMADA 3: Modificador de Role ajusta a lista
-        modifier_fn = self.role_modifiers.get((my_role, opp_role))
-        if modifier_fn:
-            priorities = modifier_fn(
-                base_priorities, active, opp, is_faster,
-                my_hp_frac, opp_hp_frac, is_threat
-            )
+        if mode == TacticalMode.LEAD:
+            priorities = self._mod_lead(base_priorities, active, opp, battle, is_faster)
+        elif mode == TacticalMode.WALLBREAK:
+            priorities = self._mod_wallbreak(base_priorities, active, opp, is_faster, my_hp_frac, opp_hp_frac)
+        elif mode == TacticalMode.ESCAPE:
+            priorities = self._mod_escape(base_priorities, active, opp, is_faster, my_role, battle)
         else:
-            priorities = base_priorities
+            modifier_fn = self.role_modifiers.get((my_role, opp_role))
+            if modifier_fn:
+                priorities = modifier_fn(
+                    base_priorities, active, opp, is_faster,
+                    my_hp_frac, opp_hp_frac, is_threat
+                )
+            else:
+                priorities = base_priorities
 
         # --- FILTRAGEM POR CANDIDATE_MASK ---
         my_hp_crit = my_hp_frac <= 0.35
@@ -834,6 +1302,44 @@ class InstinctCore:
             ranking_list.remove("HAZARD")
             ranking_list.append("HAZARD")
 
+        # --- INFLUÊNCIA DE BARREIRAS (SCREENS) NA MACRO-ESTRATÉGIA ---
+        opp_side_conds = [str(k).upper() for k in battle.opponent_side_conditions.keys()]
+        
+        physical_blocked = 'REFLECT' in opp_side_conds or 'AURORA_VEIL' in opp_side_conds
+        special_blocked = 'LIGHT_SCREEN' in opp_side_conds or 'AURORA_VEIL' in opp_side_conds
+        
+        if physical_blocked or special_blocked:
+            benched_mons = [m for m in battle.team.values() if not m.fainted and not m.active]
+            can_bypass = False
+            
+            # Se apenas uma barreira está ativa, tentamos achar um Sweeper do tipo de ataque oposto no banco
+            if physical_blocked and not special_blocked:
+                # Procura um Sweeper Especial
+                if any(self.get_role(m) == Role.SWEEPER and not self._is_physical(m) for m in benched_mons):
+                    can_bypass = True
+            elif special_blocked and not physical_blocked:
+                # Procura um Sweeper Físico
+                if any(self.get_role(m) == Role.SWEEPER and self._is_physical(m) for m in benched_mons):
+                    can_bypass = True
+            
+            # O Clean Hazard (Defog/Court Change/Brick Break) quebra barreiras e deve sempre ser top tier aqui
+            base_priorities = ["CLEAN_HAZARD"]
+            
+            if can_bypass:
+                # TEMOS A RESPOSTA! A barreira dele é inútil contra o nosso banco.
+                # Eleva a prioridade de trazer o atacante correto e amassar o oponente.
+                boost_intents = base_priorities + ["SWITCH_OFFENSIVE", "ATTACK_PIVOT", "BUFF"]
+            else:
+                # NÃO TEMOS RESPOSTA (ou é Aurora Veil bloqueando ambos).
+                # Entra em Modo Stall: Trocas defensivas, cura, status e perda de tempo até a barreira cair.
+                boost_intents = base_priorities + ["SWITCH_DEFENSIVE", "STATUS", "HEAL", "PROTECT", "DEBUFF"]
+            
+            # Puxa as ações decididas para o topo da lista de ranqueamento, respeitando a ordem
+            for b_intent in reversed(boost_intents):
+                if b_intent in ranking_list:
+                    ranking_list.remove(b_intent)
+                    ranking_list.insert(0, b_intent)
+
         confidence = 1.0
         if not ranking_list:
             confidence = 0.5
@@ -855,35 +1361,42 @@ class InstinctCore:
 
     def get_best_lead(self, battle):
         try:
-            opp_team = list(battle.opponent_team.values())
             my_team = list(battle.team.values())
+            opp_team = list(battle.opponent_team.values())
             
-            if opp_team: avg_base_speed = sum(m.base_stats.get('spe', 50) for m in opp_team) / len(opp_team)
-            else: avg_base_speed = 100
-            
-            is_slow_archetype = avg_base_speed < 80 
-            weather_setters = ['drought', 'drizzle', 'sandstream', 'snowwarning']
-            opp_has_weather = any(m.ability in weather_setters for m in opp_team)
-            my_weather_setter = next((m for m in my_team if m.ability in weather_setters), None)
-
-            predicted_lead = None
-            if opp_has_weather: predicted_lead = next((m for m in opp_team if m.ability in weather_setters), opp_team[0])
-            elif is_slow_archetype: predicted_lead = min(opp_team, key=lambda m: m.base_stats.get('spe', 50))
-            else:
-                 if opp_team: predicted_lead = max(opp_team, key=lambda m: m.base_stats.get('spe', 50))
-
-            if not predicted_lead and opp_team: predicted_lead = opp_team[0]
-            
+            if not opp_team: return "/team 123456"
             best_lead = None
-            if my_weather_setter: best_lead = my_weather_setter
-            elif predicted_lead:
-                def lead_score(m):
-                    advantage = 10 if self.get_matchup_state(m, predicted_lead) in [MatchupState.DOMINANT, MatchupState.OFFENSIVE_ADV] else 0
-                    if is_slow_archetype: return advantage
-                    return advantage + m.base_stats.get('spe', 50)
-                best_lead = max(battle.team.values(), key=lead_score)
-            else:
-                best_lead = list(battle.team.values())[0]
+            
+            # Árvore 1: Guerra de Climas
+            weather_setters = ['drought', 'drizzle', 'sandstream', 'snowwarning']
+            my_weather_setter = next((m for m in my_team if str(m.ability) in weather_setters), None)
+            opp_has_weather = any(str(m.ability) in weather_setters for m in opp_team)
+            
+            if my_weather_setter and opp_has_weather:
+                best_lead = my_weather_setter
+            
+            # Árvore 2: Suicide/Dedicated Hazard Setter (Sash + Hazard ou Speed Alta)
+            if not best_lead:
+                for m in my_team:
+                    has_hazard = any(move.id in ['stealthrock', 'spikes', 'stickyweb'] for move in m.moves.values())
+                    fast_or_sash = str(m.item) == 'focussash' or m.base_stats.get('spe', 0) > 105
+                    if has_hazard and fast_or_sash:
+                        best_lead = m
+                        break
+                        
+            # Árvore 3: Fast Pivot (Garantir momentum no turno 1)
+            if not best_lead:
+                pivots = [m for m in my_team if any(move.id in ['uturn', 'voltswitch', 'flipturn'] for move in m.moves.values())]
+                if pivots:
+                    best_lead = max(pivots, key=lambda m: m.base_stats.get('spe', 0))
+                    
+            # Árvore 4: Fallback Base (Baseado no arquétipo do nosso time)
+            if not best_lead:
+                avg_speed = sum(m.base_stats.get('spe', 50) for m in my_team) / len(my_team)
+                if avg_speed > 85: # Time Hyper Offense
+                    best_lead = max(my_team, key=lambda m: m.base_stats.get('spe', 50))
+                else:              # Time Bulky/Stall
+                    best_lead = max(my_team, key=lambda m: m.base_stats.get('hp', 50) + m.base_stats.get('def', 50) + m.base_stats.get('spd', 50))
 
             try: lead_index = my_team.index(best_lead) + 1
             except ValueError: lead_index = 1
@@ -891,6 +1404,7 @@ class InstinctCore:
             rest_indices = [str(i + 1) for i in range(len(my_team)) if i + 1 != lead_index]
             team_order = str(lead_index) + "".join(rest_indices)
             return f"/team {team_order}"
+            
         except Exception:
             return "/team 123456"
 
@@ -950,7 +1464,7 @@ class InstinctCore:
                     'WATER': ['waterabsorb', 'dryskin', 'stormdrain'], 'GROUND': ['levitate'],
                     'GRASS': ['sapsipper'], 'FIRE': ['flashfire'], 'ELECTRIC': ['voltabsorb', 'lightningrod']
                 }
-                threat_types_str = [str(t).split('.')[-1].upper() for t in opp_types_obj]
+                threat_types_str = [t.name for t in opp_types_obj]
                 for t_str in threat_types_str:
                     if t_str in type_absorb_map and cand_abi in type_absorb_map[t_str]:
                         score += 500 
@@ -1047,87 +1561,56 @@ class InstinctCore:
         if not opponent or not candidates:
             return None
 
-        best_offense_score = -9999
-        best_defense_score = -9999
-
-        opp_atk = self.estimate_stat(opponent, 'atk')
-        opp_spa = self.estimate_stat(opponent, 'spa')
         opp_spe = self.estimate_stat(opponent, 'spe')
-        opp_is_physical = opp_atk > opp_spa
-
         opp_types_obj = [t for t in opponent.types if t]
-        threat_types_str = [str(t).split('.')[-1].upper() for t in opp_types_obj]
         known_opp_moves = [m for m in opponent.moves.values() if m.base_power > 0]
-
-        type_absorb_map = {
-            'WATER': ['waterabsorb', 'dryskin', 'stormdrain'],
-            'GROUND': ['levitate'],
-            'GRASS': ['sapsipper'],
-            'FIRE': ['flashfire'],
-            'ELECTRIC': ['voltabsorb', 'lightningrod', 'motordrive']
-        }
-
-        for cand in candidates:
-            off_score = 0
-            def_score = 0
-            
+        
+        def get_general_score(cand):
+            score = 0.0
             cand_spe = self.estimate_stat(cand, 'spe')
-            matchup = self.get_matchup_state(cand, opponent)
-            cand_abi = str(cand.ability).lower() if cand.ability else ""
-
-            # --- LÓGICA DEFENSIVA HERDADA COM RESISTÊNCIAS CAPADAS ---
+            hp_frac = cand.current_hp_fraction
+            
+            # 1. Conservação de HP Base
+            if hp_frac >= 0.7: score += 150
+            elif hp_frac >= 0.4: score += 50
+            else: score -= 100
+            
+            # 2. Resistências e Fraquezas (Avaliando a segurança da entrada)
             has_weakness = False
             for opp_type in opp_types_obj:
                 mult = cand.damage_multiplier(opp_type)
                 if mult > 1.0:
-                    def_score -= 150 * mult
-                    off_score -= 50 * mult
+                    score -= 100 * mult
                     has_weakness = True
                 elif mult < 1.0:
-                    def_score += min(300, 50 / max(mult, 0.1))
+                    score += 50 / max(mult, 0.1)
 
             for move in known_opp_moves:
                 mult = cand.damage_multiplier(move)
                 if mult > 1.0:
-                    def_score -= 200 * mult
-                    off_score -= 100 * mult
+                    score -= 150 * mult
                     has_weakness = True
                 elif mult < 1.0:
-                    def_score += min(300, 75 / max(mult, 0.1))
+                    score += 75 / max(mult, 0.1)
 
+            # 3. Pressão de Revenge Kill (Sou mais rápido e ameaço matar?)
             if cand_spe > opp_spe:
-                if matchup in [MatchupState.DOMINANT, MatchupState.OFFENSIVE_ADV]:
-                    off_score += 150
-                
+                score += 100
                 has_se_move = any(m.base_power > 0 and opponent.damage_multiplier(m) > 1.5 for m in cand.moves.values())
-                if has_se_move: off_score += 150
-                    
-                if has_weakness: off_score -= 50
+                if has_se_move: score += 150
             else:
-                if has_weakness:
-                    off_score -= 200
-                    def_score -= 200
+                if has_weakness: 
+                    score -= 200
+                    
+            # 4. Impacto do Matchup Abstrato
+            matchup = self.get_matchup_state(cand, opponent)
+            if matchup == MatchupState.DOMINANT: score += 200
+            elif matchup == MatchupState.DEFENSIVE_ADV: score += 100
+            elif matchup == MatchupState.CRITICAL_DIS: score -= 300
+            
+            return score
 
-            if opponent.boosts:
-                boost_sum = max(opponent.boosts.get('atk', 0), opponent.boosts.get('spa', 0)) + opponent.boosts.get('spe', 0)
-                if boost_sum > 0: def_score += (boost_sum * 100)
-
-            for t_str in threat_types_str:
-                if t_str in type_absorb_map and cand_abi in type_absorb_map[t_str]:
-                    def_score += 200 
-
-            cand_def = cand.base_stats.get('def', 0)
-            cand_spd = cand.base_stats.get('spd', 0)
-            if opp_is_physical and cand_def > cand_spd: def_score += 80
-            elif not opp_is_physical and cand_spd > cand_def: def_score += 80
-
-            if off_score > best_offense_score: best_offense_score = off_score
-            if def_score > best_defense_score: best_defense_score = def_score
-
-        if best_offense_score > best_defense_score:
-            return self.get_offensive_switch(battle, history)
-        else:
-            return self.get_defensive_switch(battle, history)
+        return max(candidates, key=get_general_score)
        
     def _select_best_move_in_category(self, candidates, cat, active, opponent, battle):
         """
@@ -1237,7 +1720,7 @@ class InstinctCore:
             if switch: return switch
 
         # ==========================================================
-        # BLINDAGEM DE ESCOPO: BLOCO DE ATAQUE CORRIGIDO
+        # BLINDAGEM DE ESCOPO: BLOCO DE ATAQUE CORRIGIDO (V3 - COMPETITIVE MIND)
         # ==========================================================
         if active and opponent:
             if base_action in ["ATTACK_STRONG", "ATTACK_PREDICTIVE"]:
@@ -1250,22 +1733,65 @@ class InstinctCore:
                         valid_moves = [m for m in battle.available_moves if m.base_power > 0]
                 
                 if valid_moves:
-                    # Garantimos que strong_move sempre terá um valor aqui
                     strong_move = None
                     max_strong_score = -9999
                     
+                    opp_hp_frac = opponent.current_hp_fraction
+                    opp_alive = len([m for m in battle.opponent_team.values() if not m.fainted])
+                    benched_opponents = [m for m in battle.opponent_team.values() if not m.fainted and not m.active]
+                    
                     for m in valid_moves:
-                        score = self.estimate_damage_percent(m, active, opponent)
+                        score = self.estimate_damage_percent(m, active, opponent, battle)
                         m_priority = getattr(m, 'priority', 0)
-                        if m_priority > 0 and score >= opponent.current_hp_fraction:
-                            score += 2.0 
+                        
+                        # --- 1. MALÍCIA DE PRIORIDADE ---
+                        if m_priority > 0 and score >= opp_hp_frac:
+                            score += 5.0 
+                            
+                        # --- 2. INTELIGÊNCIA COMPLEXA DE RECUO (RECOIL) ---
+                        has_recoil = m.id in ['bravebird', 'flareblitz', 'doubleedge', 'woodhammer', 'wildcharge']
+                        if has_recoil:
+                            if score >= opp_hp_frac: # Vai matar?
+                                # Se NÃO for o último Pokémon do oponente, avaliamos o sacrifício
+                                if opp_alive > 1:
+                                    future_utility = False
+                                    # Meu Pokémon é valioso contra o resto do time dele?
+                                    for b_opp in benched_opponents:
+                                        if self.get_matchup_state(active, b_opp) in [MatchupState.DOMINANT, MatchupState.OFFENSIVE_ADV]:
+                                            future_utility = True
+                                            break
+                                            
+                                    if future_utility:
+                                        # Meu Pokémon é importante. Tem outro golpe seguro que também mata agora?
+                                        for other_m in valid_moves:
+                                            if other_m.id != m.id and self.estimate_damage_percent(other_m, active, opponent, battle) >= opp_hp_frac:
+                                                score -= 2.0 # Preserve-se para varrer o resto do time! Use o outro golpe.
+                                                break
+                                                
+                        # --- 3. CONSCIÊNCIA DE DEBUFFS (SELF-DROPS) ---
+                        self_drop = m.id in ['closecombat', 'superpower', 'dracometeor', 'leafstorm', 'overheat', 'makeitrain', 'fleurcannon']
+                        if self_drop:
+                            if score < opp_hp_frac:
+                                score -= 0.3 # Punição leve: evite sujar seus stats se não for o golpe de misericórdia
+                                
+                            # Agravante Crítico: Se já está debufado (usou antes), a utilidade do golpe despenca
+                            if m.category.name == "SPECIAL" and active.boosts.get('spa', 0) < 0:
+                                score -= 1.5
+                            elif m.category.name == "PHYSICAL" and active.boosts.get('atk', 0) < 0:
+                                score -= 1.5
+                            # Isso forçará o score lá para baixo, fazendo o Agente acatar os golpes de Pivot ou Switch!
+                            
+                        # --- 4. BÔNUS PARA MULTI-HIT ---
+                        multi_hit = m.id in ['iciclespear', 'rockblast', 'bulletseed', 'tailslap', 'pinmissile', 'watershuriken']
+                        if multi_hit:
+                            score += 0.2 
+
                         if hasattr(m, 'secondary') and m.secondary: score += 0.05
                         
                         if score > max_strong_score:
                             max_strong_score = score
                             strong_move = m
 
-                    # Fallback imediato caso a matemática empate em tudo
                     if not strong_move:
                         strong_move = valid_moves[0]
 
@@ -1273,22 +1799,18 @@ class InstinctCore:
                         return strong_move
                     
                     if base_action == "ATTACK_PREDICTIVE":
-                        benched_opponents = [m for m in battle.opponent_team.values() if not m.fainted and not m.active]
-                        
                         if benched_opponents:
                             predictive_candidates = [m for m in valid_moves if m.type != strong_move.type]
-                            
                             if predictive_candidates:
                                 best_pred_move = None
                                 max_pred_score = -9999
                                 
                                 for m in predictive_candidates:
-                                    avg_bench_dmg = sum(self.estimate_damage_percent(m, active, bench_mon) for bench_mon in benched_opponents) / len(benched_opponents)
+                                    avg_bench_dmg = sum(self.estimate_damage_percent(m, active, bench_mon, battle) for bench_mon in benched_opponents) / len(benched_opponents)
                                     score = avg_bench_dmg
                                     
                                     if m.id in ['knockoff', 'scald', 'nuzzle', 'saltcure', 'uturn', 'voltswitch', 'flipturn']:
                                         score += 0.20 
-                                        
                                     if hasattr(m, 'secondary') and m.secondary: score += 0.05
                                     
                                     if score > max_pred_score:
@@ -1298,18 +1820,11 @@ class InstinctCore:
                                 if best_pred_move:
                                     return best_pred_move
                         
-                        # Se não achou predição boa, bate com o forte
                         return strong_move
         
-        # Fallback geral do sistema caso tudo acima falhe
         if battle.available_switches:
-            switch = self.get_defensive_switch(battle, history)
-            if switch: return switch
-            
+            return battle.available_switches[0]
         if battle.available_moves:
-            damaging = [m for m in battle.available_moves if m.base_power > 0 and opponent.damage_multiplier(m) > 0]
-            if damaging: 
-                return max(damaging, key=lambda m: m.base_power)
-            return random.choice(battle.available_moves)
-        
+            return battle.available_moves[0]
+            
         return None

@@ -196,10 +196,19 @@ class BLUE(Player):
                 return self.choose_random_move(battle)
 
             # 4. Puxa o Perfil completo do Instinto (Action Masking + Ranking)
-            instinct_profile = self.core.get_instinct_profile(battle)
+            primary, conf, ranking_list, valid_base_macros = self.core.get_instinct_profile(battle)
             
-            # 5. Desempacotamento da Decisão
-            final_decision_tuple = self.brain.decide_action(current_state, instinct_profile)
+            # --- INJEÇÃO DA MECÂNICA PARA O ACTION MASKING ---
+            valid_actions_for_brain = []
+            is_mec_avail = battle.can_tera or battle.can_mega_evolve or battle.can_z_move or battle.can_dynamax
+            
+            for macro in valid_base_macros:
+                valid_actions_for_brain.append(macro)
+                if is_mec_avail and "SWITCH" not in macro:
+                    valid_actions_for_brain.append(f"{macro}_MEC")
+            
+            # 5. O Cérebro toma a decisão com a matemática blindada
+            final_decision_tuple = self.brain.decide_action(current_state, valid_actions_for_brain, ranking_list)
             action_str, mec_decision = final_decision_tuple
 
             # =================================================================

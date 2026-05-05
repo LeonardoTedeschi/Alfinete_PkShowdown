@@ -1,0 +1,12 @@
+{
+  "phase": "instinct",
+  "opponent": "instinct",
+  "total_battles": 10000,
+  "total_wins": 4934,
+  "win_rate": 49.34,
+  "states": 97591,
+  "total_reward": 307572.34013245243,
+  "epsilon": 0.14999999999999986,
+  "aborted": 0,
+  "brain_file": "blue_brain.pkl"
+}
