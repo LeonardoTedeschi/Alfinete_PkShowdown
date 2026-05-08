@@ -45,9 +45,9 @@ class BlueBrain:
             # Fase 1: Aprendizado bruto (Alta exploração, Alta absorção)
             "maxdamage": {"epsilon_start": 0.40, "epsilon_min": 0.05, "decay": 0.005, "alpha_start": 0.15, "alpha_min": 0.005}, 
             # Fase 2: Adaptação estratégica (Exploração média, Absorção média)
-            "instinct":  {"epsilon_start": 0.30, "epsilon_min": 0.03, "decay": 0.005, "alpha_start": 0.10, "alpha_min": 0.003}, 
+            "instinct":  {"epsilon_start": 0.40, "epsilon_min": 0.03, "decay": 0.002, "alpha_start": 0.15, "alpha_min": 0.005}, 
             # Fase 3: Lapidação (Exploração baixa, Absorção baixa)
-            "selfplay":  {"epsilon_start": 0.15, "epsilon_min": 0.01, "decay": 0.003, "alpha_start": 0.05, "alpha_min": 0.001}
+            "selfplay":  {"epsilon_start": 0.30, "epsilon_min": 0.01, "decay": 0.002, "alpha_start": 0.10, "alpha_min": 0.001}
         }
         
         if phase_name in phase_config:
@@ -71,15 +71,31 @@ class BlueBrain:
     def calculate_reward(self, battle, history):
         reward = 0.0
 
-        # --- 1. RECOMPENSAS MACRO (ABATES E MORTES) ---
+        # --- 1. RECOMPENSAS MACRO (ABATES, MORTES E SACRIFÍCIOS) ---
         current_my_fainted = len([m for m in battle.team.values() if m.fainted])
         current_opp_fainted = len([m for m in battle.opponent_team.values() if m.fainted])
         
         my_fainted_prev = history.get('my_fainted', 0)
         opp_fainted_prev = history.get('opp_fainted', 0)
         
-        if current_my_fainted > my_fainted_prev: reward -= 100.0
-        if current_opp_fainted > opp_fainted_prev: reward += 100.0 
+        # Recupera a memória de 2 turnos atrás
+        my_fainted_prev_prev = history.get('my_fainted_prev_turn', 0)
+        
+        # A. Punição normal por morte
+        if current_my_fainted > my_fainted_prev: 
+            reward -= 100.0
+
+        # B. Recompensa por Abate e A Arte do Sacrifício
+        if current_opp_fainted > opp_fainted_prev: 
+            reward += 100.0 
+            
+            # C. BÔNUS DE REVENGE KILL ("Boi de Piranha")
+            if my_fainted_prev > my_fainted_prev_prev:
+                reward += 50.0 # Bônus brutal compensa o sacrifício e ensina o bot a preparar o terreno
+                
+            # D. BÔNUS DE KAMIKAZE (Double KO estratégico)
+            elif current_my_fainted > my_fainted_prev:
+                reward += 30.0 # Recompensa por se sacrificar para levar uma ameaça junto
 
         # --- 2. MICRO-RECOMPENSAS (SOMA GLOBAL DE HP) ---
         
@@ -108,29 +124,60 @@ class BlueBrain:
         base_action = last_action_tuple[0] if last_action_tuple else None
         last_state = history.get('state', [])
 
-        # --- 3. PEDÁGIO DE DESPERDÍCIO (BUFF PERDIDO) ---
+        # Recupera a ação e o estado anterior para as análises abaixo
+        last_action_tuple = history.get('last_action')
+        base_action = last_action_tuple[0] if last_action_tuple else None
+        last_state = history.get('state', [])
+
+        # --- CORREÇÃO: EXTRAINDO O MACRO CONTEXT DO ESTADO ---
+        macro_context = "BRAWL" # Valor padrão de segurança
+        if last_state and len(last_state) >= 15:
+            macro_context = last_state[14]
+
+        # --- 3. PEDÁGIO DE TROCA E DESPERDÍCIO ---
         active = battle.active_pokemon
         curr_my_species = active.species if active else None
         prev_my_species = history.get('my_species')
 
         if prev_my_species and curr_my_species and prev_my_species != curr_my_species:
-            if current_my_fainted == my_fainted_prev: # Confirma que não foi troca forçada por morte
-                # PUNE APENAS TROCAS MANUAIS. Pivots (U-turn/Volt Switch) aproveitam o Buff no dano.
+            if current_my_fainted == my_fainted_prev: 
+                prev_action = history.get('prev_action')
                 if base_action in ["SWITCH_DEFENSIVE", "SWITCH_OFFENSIVE"]:
+                    if prev_action in ["SWITCH_DEFENSIVE", "SWITCH_OFFENSIVE", "ATTACK_PIVOT"]:
+                        reward -= 10.0
+                    
                     if last_state and len(last_state) >= 10:
                         my_last_boost_state = str(last_state[9]).upper()
                         if "BUFFED" in my_last_boost_state and "DEBUFF" not in my_last_boost_state:
-                            reward -= 5.0 # Punição severa por jogar o turno de setup no lixo
+                            reward -= 10.0
 
-        # --- 4. RECOMPENSAS TEMPORAIS E DE MACRO-ESTRATÉGIA ---
-        macro_context = "BRAWL" 
-        if last_state and len(last_state) >= 15:
-            macro_context = last_state[-1]
-
+        # --- 4. A GUILHOTINA TÁTICA (Punições por Redundância) ---
+        opp = battle.opponent_active_pokemon
+        
         if base_action == "HAZARD":
-            if macro_context == "OPENING": reward += 5.0
-            elif macro_context == "BRAWL": reward += 2.0
+            # Puxa o estado atual dos Hazards no campo do oponente
+            opp_conds = [str(k).upper() for k in battle.opponent_side_conditions.keys()]
+            already_set = any(h in opp_conds for h in ['STEALTH_ROCK', 'SPIKES', 'TOXIC_SPIKES', 'STICKY_WEB'])
+            
+            if already_set:
+                reward -= 10.0
+            else:
+                if macro_context == "OPENING": reward += 5.0
+                elif macro_context == "BRAWL": reward += 2.0
 
+        elif base_action == "STATUS":
+            # Se o oponente atual JÁ ESTÁ com status e tentamos aplicar novamente
+            curr_opp_status = "AFFLICTED" if opp and opp.status else "CLEAN"
+            prev_opp_status = history.get('opp_status', "CLEAN")
+            
+            if prev_opp_status == "AFFLICTED":
+                reward -= 10.0 # Reduzido: Ação de status redundante
+            elif curr_opp_status == "AFFLICTED":
+                if macro_context == "OPENING": reward += 5.0
+                elif macro_context == "BRAWL": reward += 3.0
+                else: reward += 1.0
+
+        # --- 5. RECOMPENSAS TEMPORAIS E DE MACRO-ESTRATÉGIA ---
         elif base_action == "CLEAN_HAZARD":
             if macro_context in ["OPENING", "BRAWL"]: reward += 4.0
             else: reward += 1.0
@@ -144,40 +191,41 @@ class BlueBrain:
                 reward += 5.0 
                 
         elif base_action == "FIELD_CONTROL":
-            if macro_context in ["OPENING", "BRAWL", "RECOVERING"]: 
-                reward += 4.0
-            else: 
-                reward += 1.0
+            if macro_context in ["OPENING", "BRAWL", "RECOVERING"]: reward += 4.0
+            else: reward += 1.0
                 
         elif base_action in ["HEAL", "HEAL_STATUS"]:
-            if macro_context in ["BRAWL", "RECOVERING", "CLUTCH"]:
-                reward += 1.5
+            # NOVA PUNIÇÃO: Cura desnecessária (Overheal) com a vida no bucket FULL
+            if base_action == "HEAL" and history.get('my_hp_bucket') == "FULL":
+                reward -= 3.0
             else:
-                reward += 0.5
+                if macro_context in ["BRAWL", "RECOVERING", "CLUTCH"]: reward += 1.5
+                else: reward += 0.5
 
-        opp = battle.opponent_active_pokemon
-        curr_opp_status = "AFFLICTED" if opp and opp.status else "CLEAN"
-        
-        if history.get('opp_status') == "CLEAN" and curr_opp_status == "AFFLICTED":
-            if macro_context == "OPENING": reward += 5.0
-            elif macro_context == "BRAWL": reward += 3.0
-            else: reward += 1.0
+        had_lethal = history.get('has_lethal', False)
+        if had_lethal and base_action not in ["ATTACK_STRONG", "ATTACK_PREDICTIVE", "ATTACK_TECH", "ATTACK_PIVOT"]:
+            reward -= 20.0
 
-        # --- 5. O XEQUE-MATE ---
+        # --- 5.5 RECOMPENSA DE MOMENTUM ---
+        prev_action = history.get('prev_action')
+        if prev_action in ["SWITCH_DEFENSIVE", "SWITCH_OFFENSIVE", "ATTACK_PIVOT"]:
+            if base_action in ["ATTACK_STRONG", "ATTACK_PREDICTIVE", "STATUS", "HAZARD", "BUFF"]:
+                reward += 8.0
+            elif base_action in ["SWITCH_DEFENSIVE", "SWITCH_OFFENSIVE"]:
+                reward -= 10.0 
+
+        # --- 6. O XEQUE-MATE ---
         if battle.won: 
-            reward += 1000.0
+            reward += 1500.0
         elif battle.lost: 
-            reward -= 1000.0
+            reward -= 1500.0
 
         return reward
 
     def _get_abstract_state(self, state):
-        """Remove a dimensão de Mecânica (MEC) da chave de aprendizado para generalizar a tabela."""
+        """A Tabela Q agora aprende exatamente QUANDO usar a mecânica."""
         if state in [("TERMINAL_WIN",), ("TERMINAL_LOSS",)]:
             return state
-        if isinstance(state, tuple) and len(state) == 14:
-            # Substitui o MEC_AVAIL ou MEC_USED por MEC_ANY
-            return state[:-1] + ("MEC_ANY",)
         return state
 
     def update_feedback(self, current_state, last_state, last_action_tuple, reward):
@@ -266,10 +314,9 @@ class BlueBrain:
                     target_list.append(idx)
 
     def decide_action(self, state, valid_actions, ranking_list):
-        # 1. Verifica no estado REAL se a mecânica está disponível
         is_mec_avail = False
-        if isinstance(state, tuple) and len(state) > 0:
-            is_mec_avail = (state[-1] == "MEC_AVAIL" or state[-2] == "MEC_AVAIL")
+        if isinstance(state, tuple) and len(state) >= 14:
+            is_mec_avail = (state[13] == "MEC_AVAIL")
 
         abs_state = self._get_abstract_state(state)
         

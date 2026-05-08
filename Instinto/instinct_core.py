@@ -135,15 +135,17 @@ class InstinctCore:
     def get_hp_bucket(self, pokemon):
         if not pokemon or pokemon.fainted: return "CRIT" 
         hp = pokemon.current_hp_fraction
-        if hp >= 0.7: return "FULL"
-        if hp >= 0.35: return "MED"
+        if hp >= 0.85: return "FULL"
+        if hp >= 0.50: return "SAFE"
+        if hp >= 0.25: return "DANGER"
         return "CRIT"
 
     def get_opp_hp_bucket(self, pokemon):
         if not pokemon or pokemon.fainted: return "CRIT" 
         hp = pokemon.current_hp_fraction
-        if hp >= 0.7: return "FULL"
-        if hp >= 0.35: return "MED"
+        if hp >= 0.85: return "FULL"
+        if hp >= 0.50: return "SAFE"
+        if hp >= 0.25: return "DANGER"
         return "CRIT"
 
     def get_weather_state(self, battle):
@@ -282,28 +284,26 @@ class InstinctCore:
         opponent = battle.opponent_active_pokemon
 
         if not active or not opponent:
-            return ("UNKNOWN",) * 15
+            return ("UNKNOWN",) * 16 # Agora são 16 variáveis
         
         my_role = self.get_role(active).name
         opp_role = self.get_role(opponent).name
         matchup = self.get_matchup_state(active, opponent).name
 
+        # --- A CONSCIÊNCIA DE ENTRADA ---
+        is_first_turn = "ENTRY" if getattr(active, 'first_turn', False) else "FIELDED"
+
         return (
-            my_role,
-            opp_role,
-            matchup,
-            self.get_hp_bucket(active),
-            self.get_opp_hp_bucket(opponent),
-            self.get_weather_state(battle),
-            self.get_speed_tier(battle),
-            self.get_status_state(active),
-            self.get_status_state(opponent),
-            self.get_boost_state(active),
-            self.get_boost_state(opponent),
+            my_role, opp_role, matchup,
+            self.get_hp_bucket(active), self.get_opp_hp_bucket(opponent),
+            self.get_weather_state(battle), self.get_speed_tier(battle),
+            self.get_status_state(active), self.get_status_state(opponent),
+            self.get_boost_state(active), self.get_boost_state(opponent),
             self.get_hazard_state(battle.side_conditions),
             self.get_hazard_state(battle.opponent_side_conditions),
-            self.get_mechanic_state(battle),
-            self.get_macro_context(battle)
+            self.get_mechanic_state(battle), # Índice 13
+            self.get_macro_context(battle),  # Índice 14
+            is_first_turn                    # Índice 15
         )
 
     # =========================================================================
@@ -607,28 +607,47 @@ class InstinctCore:
                     if any(ab in opp_abilities for ab in ['insomnia', 'vitalspirit', 'sweetveil']): return True
 
         # --- 5. BUFFS MAXIMIZADOS E DEBUFFS ---
-        if move.category.name == "STATUS" and move.boosts:
-            # Pega o alvo padrão. Se for buff próprio ('self' ou equivalente)
-            if getattr(move, 'target', 'self') == 'self':
-                is_useful = False
-                for stat, boost_amount in move.boosts.items():
-                    current_stage = active.boosts.get(stat, 0)
-                    if boost_amount > 0: 
-                        # O limite hardcoded da mecânica do jogo é +6
-                        if current_stage < 6:
+        if move.category.name == "STATUS":
+            # Extrai os boosts de forma segura (alguns golpes salvam em self_boost)
+            boosts = getattr(move, 'boosts', None) or getattr(move, 'self_boost', None)
+            
+            if boosts:
+                # Converte o Enum do poke_env forçadamente para string para não quebrar a lógica
+                target_str = str(getattr(move, 'target', '')).lower()
+                
+                # Se for um buff próprio
+                if 'self' in target_str:
+                    is_useful = False
+                    for stat, boost_amount in boosts.items():
+                        current_stage = active.boosts.get(stat, 0)
+                        if boost_amount > 0 and current_stage < 6:
                             is_useful = True
-                            break 
-                    elif boost_amount < 0: 
-                        is_useful = True 
-                        
-                if not is_useful: 
-                    return True
-                    
-            # Debuffs aplicados no oponente (ex: Screech)
-            elif getattr(move, 'target', 'normal') in ['normal', 'allAdjacentFoes']:
-                if any(ab in opp_abilities for ab in ['clearbody', 'whitesmoke', 'fullmetalbody']):
-                    if any(b < 0 for b in move.boosts.values()):
+                            break
+                        elif boost_amount < 0:
+                            is_useful = True
+                            
+                    if not is_useful: 
                         return True
+                        
+                # Se for debuff no oponente
+                elif 'normal' in target_str or 'foe' in target_str:
+                    if any(ab in opp_abilities for ab in ['clearbody', 'whitesmoke', 'fullmetalbody']):
+                        if any(b < 0 for b in boosts.values()):
+                            return True
+
+        # --- 5.5. PREVENÇÃO DE LOOPS DE STATUS ABSOLUTOS ---
+        if move.id == 'substitute':
+            # Checa se o Pokémon já tem um substituto ativo
+            if active.effects and any('substitute' in str(e).lower() for e in active.effects):
+                return True
+            # Checa se tem HP suficiente para o custo de 25%
+            if active.current_hp_fraction <= 0.25:
+                return True
+
+        if move.id == 'leechseed':
+            # Checa se a semente já está plantada no oponente
+            if opponent.effects and any('leechseed' in str(e).lower() for e in opponent.effects):
+                return True
 
         # --- 6. BARREIRAS, CONDIÇÕES DE CAMPO E CLIMA ---
         current_weather = next(iter(battle.weather)).name if battle.weather else "CLEAR"
@@ -713,6 +732,17 @@ class InstinctCore:
             if not team_has_status:
                 return True
 
+        # --- 11. Terrenos ---
+        if move.status:
+                if opponent.status: return True # Já tem status
+                
+                # --- NOVO: FILTRO DE TERRENOS (Misty / Electric) ---
+                active_fields = [str(f).upper() for f in battle.fields.keys()]
+                grounded_opp = 'FLYING' not in opp_types and not (opponent.item and str(opponent.item).lower() == 'airballoon') and 'levitate' not in opp_abilities
+                if grounded_opp:
+                    if 'MISTY_TERRAIN' in active_fields: return True
+                    if 'ELECTRIC_TERRAIN' in active_fields and move.status.name == 'SLP': return True
+                    
         return False
 
     def get_macro_context(self, battle):
@@ -1229,7 +1259,7 @@ class InstinctCore:
     # INTEGRAÇÃO DA ÁRVORE TÁTICA E ACTION MASKING
     # =========================================================================
 
-    def get_instinct_profile(self, battle):
+    def get_instinct_profile(self, battle, history=None):
         candidate_mask = self.get_available_actions(battle)
 
         if not battle.active_pokemon or not battle.opponent_active_pokemon:
@@ -1340,6 +1370,34 @@ class InstinctCore:
                     ranking_list.remove(b_intent)
                     ranking_list.insert(0, b_intent)
 
+        has_lethal = False
+
+        if "ATTACK_STRONG" in candidate_mask or "ATTACK_PREDICTIVE" in candidate_mask:
+            for m in battle.available_moves:
+                if m.base_power > 0 and not self.is_move_useless(m, opp, battle):
+                    dmg = self.estimate_damage_percent(m, active, opp, battle)
+                    if dmg >= opp_hp_frac:
+                        has_lethal = True
+                        break
+        
+        if has_lethal:
+            # Joga os ataques para o topo absoluto da lista
+            for atk in reversed(["ATTACK_PREDICTIVE", "ATTACK_STRONG"]):
+                if atk in ranking_list:
+                    ranking_list.remove(atk)
+                    ranking_list.insert(0, atk)
+
+        if history:
+            prev_action = history.get('last_action', (None, None))[0]
+            # Removido o ATTACK_PIVOT do gatilho de fadiga
+            if prev_action in ["SWITCH_DEFENSIVE", "SWITCH_OFFENSIVE"]:
+                for sw in ["SWITCH_DEFENSIVE", "SWITCH_OFFENSIVE"]:
+                    if sw in ranking_list:
+                        current_idx = ranking_list.index(sw)
+                        ranking_list.remove(sw)
+                        new_idx = min(len(ranking_list), current_idx + 2)
+                        ranking_list.insert(new_idx, sw)
+
         confidence = 1.0
         if not ranking_list:
             confidence = 0.5
@@ -1352,7 +1410,7 @@ class InstinctCore:
                 ranking_list.append("ATTACK_STRONG")
 
         primary = ranking_list[0]
-        return (primary, confidence, ranking_list, candidate_mask)
+        return (primary, confidence, ranking_list, candidate_mask, has_lethal)
 
 
     # =========================================================================
@@ -1799,13 +1857,21 @@ class InstinctCore:
                         return strong_move
                     
                     if base_action == "ATTACK_PREDICTIVE":
+                        
                         if benched_opponents:
-                            predictive_candidates = [m for m in valid_moves if m.type != strong_move.type]
+                            all_offensive_moves = [
+                                m for m in battle.available_moves 
+                                if self.classify_move(m) in [MoveCategory.ATTACK_STRONG, MoveCategory.ATTACK_TECH, MoveCategory.ATTACK_PIVOT]
+                            ]
+                            
+                            predictive_candidates = [m for m in all_offensive_moves if m.type != strong_move.type]
+                            
                             if predictive_candidates:
                                 best_pred_move = None
                                 max_pred_score = -9999
                                 
                                 for m in predictive_candidates:
+                                    # Calcula a média de dano APENAS no banco, ignorando as imunidades do ativo
                                     avg_bench_dmg = sum(self.estimate_damage_percent(m, active, bench_mon, battle) for bench_mon in benched_opponents) / len(benched_opponents)
                                     score = avg_bench_dmg
                                     

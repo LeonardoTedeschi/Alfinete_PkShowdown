@@ -195,17 +195,20 @@ class BLUE(Player):
                     return self.create_order(best_switch)
                 return self.choose_random_move(battle)
 
-            # 4. Puxa o Perfil completo do Instinto (Action Masking + Ranking)
-            primary, conf, ranking_list, valid_base_macros = self.core.get_instinct_profile(battle)
+            # 4. Puxa o Perfil completo do Instinto (Agora recebe o has_lethal)
+            primary, conf, ranking_list, valid_base_macros, has_lethal = self.core.get_instinct_profile(battle, history)
             
-            # --- INJEÇÃO DA MECÂNICA PARA O ACTION MASKING ---
             valid_actions_for_brain = []
             is_mec_avail = battle.can_tera or battle.can_mega_evolve or battle.can_z_move or battle.can_dynamax
             
             for macro in valid_base_macros:
-                valid_actions_for_brain.append(macro)
-                if is_mec_avail and "SWITCH" not in macro:
+                # --- O FILTRO DA MEGA EVOLUÇÃO ---
+                if battle.can_mega_evolve and "SWITCH" not in macro:
                     valid_actions_for_brain.append(f"{macro}_MEC")
+                else:
+                    valid_actions_for_brain.append(macro)
+                    if is_mec_avail and "SWITCH" not in macro:
+                        valid_actions_for_brain.append(f"{macro}_MEC")
             
             # 5. O Cérebro toma a decisão com a matemática blindada
             final_decision_tuple = self.brain.decide_action(current_state, valid_actions_for_brain, ranking_list)
@@ -240,11 +243,15 @@ class BLUE(Player):
                     if prev_opp_hp > 0.0:
                         opp_switched = True
 
+            prev_action = history.get('last_action', (None, None))[0] if history else None
+
             # Salvamos o histórico com a decisão final e RESETAMOS a flag de processamento
             self.battle_history[battle.battle_tag] = {
                 'state': current_state,
-                'last_action': final_decision_tuple, 
-                'reward_processed': False,  
+                'last_action': final_decision_tuple,
+                'prev_action': prev_action,
+                'reward_processed': False,
+                'has_lethal': has_lethal,
                 
                 # NOVO: Registra a espécie para impedir bugs no cálculo de Dano/Cura
                 'my_species': active.species if active else None,
@@ -267,6 +274,9 @@ class BLUE(Player):
                 
                 'my_fainted': len([m for m in battle.team.values() if m.fainted]),
                 'opp_fainted': len([m for m in battle.opponent_team.values() if m.fainted]),
+                
+                # Memória de 2 turnos atrás para calcular o Revenge Kill
+                'my_fainted_prev_turn': history.get('my_fainted', 0),
                 
                 # --- NOVAS VARIÁVEIS PARA RECOMPENSA DENSA ---
                 'my_alive': len([m for m in battle.team.values() if not m.fainted]),

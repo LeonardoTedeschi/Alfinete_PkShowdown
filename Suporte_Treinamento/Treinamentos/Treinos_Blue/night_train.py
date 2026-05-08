@@ -28,7 +28,7 @@ CIRCUIT = {
         "opponent": "maxdamage",
         "target_wr": 0.60,       
         "patience": 2,
-        "max_sessions": 6,
+        "max_sessions": 4,
         "n_battles": 10000,
         "brain_suffix": "maxdamage"
     },
@@ -36,7 +36,7 @@ CIRCUIT = {
         "opponent": "instinct",
         "target_wr": 0.65,       
         "patience": 3,
-        "max_sessions": 10,
+        "max_sessions": 8,
         "n_battles": 10000,
         "brain_suffix": "instinct"
     },
@@ -44,7 +44,7 @@ CIRCUIT = {
         "opponent": "selfplay_frozen",
         "target_wr": 0.53,       
         "patience": 4,
-        "max_sessions": 15,
+        "max_sessions": 12,
         "n_battles": 10000,
         "brain_suffix": "selfplay",
         "update_frozen_every": 3
@@ -53,7 +53,7 @@ CIRCUIT = {
         "opponent": "selfplay_frozen",
         "target_wr": 0.52,       
         "patience": 5,
-        "max_sessions": 20,
+        "max_sessions": 16,
         "n_battles": 10000,
         "brain_suffix": "selfplay_final",
         "update_frozen_every": 3
