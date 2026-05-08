@@ -26,7 +26,7 @@ FROZEN_PATH = os.path.join(INSTINTO_DIR, "frozen_blue_brain.pkl")
 CIRCUIT = {
     "maxdamage": {
         "opponent": "maxdamage",
-        "target_wr": 0.60,       
+        "target_wr": 0.70,       
         "patience": 2,
         "max_sessions": 4,
         "n_battles": 10000,

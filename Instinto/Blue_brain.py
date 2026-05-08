@@ -26,9 +26,9 @@ class BlueBrain:
         self.base_actions = [
             "ATTACK_STRONG", "ATTACK_PREDICTIVE", "ATTACK_PIVOT", "ATTACK_TECH", 
             "BUFF", "STATUS", "HEAL", "CLEAN_HAZARD", 
-            "PROTECT", "DEBUFF", "STAT_CLEAN", "HEAL_STATUS", "PHAZE", 
+            "PROTECT", "DEBUFF", "DISRUPTION", "STAT_CLEAN", "HEAL_STATUS", "PHAZE",
             "FIELD_CONTROL", "HAZARD", "SWITCH_DEFENSIVE", "SWITCH_OFFENSIVE",
-            "BARRIER" # Nova ação estratégica
+            "BARRIER"
         ]
         
         # Constrói a lista expandida para a Q-Table (Ação + Ação_MEC)
@@ -68,7 +68,7 @@ class BlueBrain:
             print(f"[CÉREBRO] Entrando na Fase: {phase_name.upper()} | Eps: {self.epsilon:.2f} -> {self.min_epsilon:.2f} | Alpha: {self.alpha:.3f}")
 
 
-    def calculate_reward(self, battle, history):
+    def calculate_reward(self, battle, history, current_state=None):
         reward = 0.0
 
         # --- 1. RECOMPENSAS MACRO (ABATES, MORTES E SACRIFÍCIOS) ---
@@ -134,22 +134,27 @@ class BlueBrain:
         if last_state and len(last_state) >= 15:
             macro_context = last_state[14]
 
-        # --- 3. PEDÁGIO DE TROCA E DESPERDÍCIO ---
+       # --- 3. PEDÁGIO DE TROCA E DESPERDÍCIO ---
         active = battle.active_pokemon
         curr_my_species = active.species if active else None
         prev_my_species = history.get('my_species')
 
         if prev_my_species and curr_my_species and prev_my_species != curr_my_species:
             if current_my_fainted == my_fainted_prev: 
-                prev_action = history.get('prev_action')
+                # 1. Pedágio Fixo por qualquer troca voluntária
                 if base_action in ["SWITCH_DEFENSIVE", "SWITCH_OFFENSIVE"]:
+                    reward -= 5.0
+                    
+                    # 2. Punição por trocas consecutivas (Fadiga/Loop)
+                    prev_action = history.get('prev_action')
                     if prev_action in ["SWITCH_DEFENSIVE", "SWITCH_OFFENSIVE", "ATTACK_PIVOT"]:
                         reward -= 10.0
                     
-                    if last_state and len(last_state) >= 10:
-                        my_last_boost_state = str(last_state[9]).upper()
-                        if "BUFFED" in my_last_boost_state and "DEBUFF" not in my_last_boost_state:
-                            reward -= 10.0
+                # 3. Punição por desperdício de status positivo (Buff) na troca
+                if last_state and len(last_state) >= 10:
+                    my_last_boost_state = str(last_state[9]).upper()
+                    if "BUFFED" in my_last_boost_state and "DEBUFF" not in my_last_boost_state:
+                        reward -= 15.0
 
         # --- 4. A GUILHOTINA TÁTICA (Punições por Redundância) ---
         opp = battle.opponent_active_pokemon
@@ -190,11 +195,69 @@ class BlueBrain:
             if macro_context in ["CLUTCH", "DOMINATING", "RECOVERING"]: 
                 reward += 5.0 
                 
-        elif base_action == "FIELD_CONTROL":
-            if macro_context in ["OPENING", "BRAWL", "RECOVERING"]: reward += 4.0
-            else: reward += 1.0
+        elif base_action == "DISRUPTION":
+            prev_action = history.get('prev_action', "")
+            str_prev = str(prev_action[0]) if isinstance(prev_action, tuple) else str(prev_action)
+            
+            if "DISRUPTION" in str_prev:
+                reward -= 15.0 # Punição severa: Desperdiçou o turno tentando renovar algo que já está ativo
+            else:
+                # Bônus Originais de Execução Perfeita
+                opp_role = str(last_state[1]) if len(last_state) >= 2 else ""
+                if opp_role == "TANK":
+                    reward += 10.0 # Destruiu a função da Wall inimiga!
+                if macro_context == "OPENING":
+                    reward += 6.0  # Excelente para impedir Hazards e Setups iniciais
                 
-        elif base_action in ["HEAL", "HEAL_STATUS"]:
+        elif base_action == "DEBUFF":
+            # Screech, Charm, etc.
+            reward += 2.0 # Recompensa base pequena por reduzir status
+                
+        elif base_action == "FIELD_CONTROL":
+            # A IA SÓ PODE SER JULGADA PELO QUE ELA ENXERGA (last_state vs current_state)
+            prev_field = str(last_state[5]).upper() if last_state and len(last_state) >= 6 else "NORMAL"
+            
+            # Pega a nova abstração de campo (Se o bot morreu no turno, assume NORMAL)
+            curr_field = "NORMAL"
+            if current_state and len(current_state) >= 6:
+                curr_field = str(current_state[5]).upper()
+                
+            positive_fields = ["FIELD_POWER", "FIELD_SPEED", "FIELD_DEFENSE", "FIELD_SWEEP"]
+            
+            # O Julgamento Matemático Purista
+            if curr_field in positive_fields:
+                if prev_field == "FIELD_HOSTILE":
+                    reward += 15.0 # Mestre: Reverteu o clima inimigo e ganhou vantagem tática
+                else:
+                    reward += 10.0 # Ótimo: Criou vantagem do zero
+                    
+            elif curr_field == "FIELD_NEUTRAL":
+                if prev_field == "FIELD_HOSTILE":
+                    reward += 5.0  # Tático de Defesa: Limpou o clima hostil, mesmo que não ganhe bônus direto
+                else:
+                    reward -= 2.0  # Ruído: Alterou o campo, mas o próprio Cérebro não sabe como usar isso
+                    
+            elif curr_field == "FIELD_HOSTILE":
+                reward -= 10.0     # Suicídio Tático: O Cérebro usou um golpe que piorou a própria situação!
+                
+            else:
+                reward -= 8.0      # Falha: O oponente impediu (Taunt), errou, ou sobrescreveu no mesmo turno
+
+        elif base_action == "PROTECT":
+            prev_action = history.get('prev_action', "")
+            str_prev = str(prev_action[0]) if isinstance(prev_action, tuple) else str(prev_action)
+            
+            if "PROTECT" in str_prev:
+                reward -= 15.0 
+            else:
+                # Recompensa moderada por usar o Protect de forma inteligente (Scout)
+                reward += 3.0
+                
+        elif base_action == "HEAL_STATUS":
+            # Punição por desperdiçar turno se o time não estiver curado
+            reward += 8.0 # Recompensa padrão por curar o time
+                
+        elif base_action in ["HEAL"]:
             # NOVA PUNIÇÃO: Cura desnecessária (Overheal) com a vida no bucket FULL
             if base_action == "HEAL" and history.get('my_hp_bucket') == "FULL":
                 reward -= 3.0
@@ -204,15 +267,37 @@ class BlueBrain:
 
         had_lethal = history.get('has_lethal', False)
         if had_lethal and base_action not in ["ATTACK_STRONG", "ATTACK_PREDICTIVE", "ATTACK_TECH", "ATTACK_PIVOT"]:
-            reward -= 20.0
+            reward -= 30.0
+
+        elif base_action == "STAT_CLEAN":
+            my_boost = str(last_state[9]).upper() if len(last_state) >= 10 else "NEUTRAL"
+            opp_boost = str(last_state[10]).upper() if len(last_state) >= 11 else "NEUTRAL"
+            
+            if "DEBUFF" not in my_boost and "BUFFED" not in opp_boost:
+                reward -= 8.0 # Punição: Usou Haze num cenário neutro
+            else:
+                reward += 5.0  # Genial: Limpou um Sweeper inimigo ou curou nossos drops
 
         # --- 5.5 RECOMPENSA DE MOMENTUM ---
         prev_action = history.get('prev_action')
         if prev_action in ["SWITCH_DEFENSIVE", "SWITCH_OFFENSIVE", "ATTACK_PIVOT"]:
-            if base_action in ["ATTACK_STRONG", "ATTACK_PREDICTIVE", "STATUS", "HAZARD", "BUFF"]:
+            if base_action in ["ATTACK_STRONG", "ATTACK_PREDICTIVE", "ATTACK_TECH", "ATTACK_PIVOT", "STATUS", "HAZARD", "BUFF"]:
                 reward += 8.0
             elif base_action in ["SWITCH_DEFENSIVE", "SWITCH_OFFENSIVE"]:
                 reward -= 10.0 
+
+        # --- 5.6 SINERGIA DE CAMPO (Aproveitando a Vantagem) ---
+        if last_state and len(last_state) >= 6:
+            field_context = str(last_state[5]).upper()
+            
+            if field_context == "FIELD_POWER" and base_action in ["ATTACK_STRONG", "ATTACK_PREDICTIVE"]:
+                reward += 4.0 # Sinergia: Usou o bônus matemático de dano para esmagar o oponente
+                
+            elif field_context == "FIELD_SPEED" and base_action not in ["SWITCH_DEFENSIVE", "PROTECT"]:
+                reward += 3.0 # Sinergia: Usou a vantagem de turno garantido para agir ativamente
+                
+            elif field_context == "FIELD_DEFENSE" and base_action in ["BUFF", "HAZARD", "HEAL", "STATUS"]:
+                reward += 4.0 # Sinergia: Usou a Evasão/Cura do campo para fazer setup com segurança absoluta
 
         # --- 6. O XEQUE-MATE ---
         if battle.won: 

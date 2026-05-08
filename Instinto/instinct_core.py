@@ -48,9 +48,10 @@ class MoveCategory(Enum):
     FIELD_CONTROL = 14
     HAZARD = 15
     BARRIER = 16
-    SWITCH_DEFENSIVE = 17
-    SWITCH_OFFENSIVE = 18
-    UNKNOWN = 19
+    DISRUPTION = 17
+    SWITCH_DEFENSIVE = 18
+    SWITCH_OFFENSIVE = 19
+    UNKNOWN = 20
     
 
 # =============================================================================
@@ -67,7 +68,7 @@ class InstinctCore:
         self.mode_templates = {
             TacticalMode.PRESS: [
                 # Vantagem Absoluta: Foco em predição, nuke, ou setup para varrer o time.
-                "ATTACK_PREDICTIVE", "ATTACK_STRONG", "BUFF", "ATTACK_TECH",
+                "ATTACK_PREDICTIVE", "ATTACK_STRONG", "BUFF", "ATTACK_TECH", "DISRUPTION",
                 "HAZARD", "FIELD_CONTROL", "ATTACK_PIVOT", "CLEAN_HAZARD", 
                 "STATUS", "DEBUFF", "HEAL", "HEAL_STATUS", "STAT_CLEAN", 
                 "PHAZE", "PROTECT", "SWITCH_OFFENSIVE", "SWITCH_DEFENSIVE"
@@ -77,13 +78,13 @@ class InstinctCore:
                 # Disputa Ativa (Neutro/Volátil): Foco em ganhar no 1v1 ou não perder momentum.
                 "ATTACK_STRONG", "ATTACK_TECH", "PROTECT", "ATTACK_PIVOT",
                 "STATUS", "BUFF", "HEAL", "HAZARD", "CLEAN_HAZARD",
-                "DEBUFF", "FIELD_CONTROL", "ATTACK_PREDICTIVE", "STAT_CLEAN", 
+                "DEBUFF", "FIELD_CONTROL", "ATTACK_PREDICTIVE", "DISRUPTION", "STAT_CLEAN", 
                 "PHAZE", "HEAL_STATUS", "SWITCH_OFFENSIVE", "SWITCH_DEFENSIVE"
             ],
             
             TacticalMode.GRIND: [
                 # Attrition/Stall: Foco em desgaste, recuperação e bloqueio do adversário.
-                "HAZARD", "STATUS", "HEAL", "PROTECT", "DEBUFF", 
+                "HAZARD", "STATUS", "HEAL", "PROTECT", "DISRUPTION", "DEBUFF", 
                 "CLEAN_HAZARD", "PHAZE", "STAT_CLEAN", "HEAL_STATUS", 
                 "BUFF", "FIELD_CONTROL", "ATTACK_TECH", "ATTACK_PIVOT", 
                 "SWITCH_OFFENSIVE", "SWITCH_DEFENSIVE", "ATTACK_STRONG", "ATTACK_PREDICTIVE"
@@ -91,21 +92,21 @@ class InstinctCore:
             
             TacticalMode.ESCAPE: [
                 # Desvantagem Crítica: Foco absoluto em sobrevivência ou suicídio útil.
-                "SWITCH_DEFENSIVE", "ATTACK_PIVOT", "PROTECT", "SWITCH_OFFENSIVE",
-                "ATTACK_TECH", "STATUS", "DEBUFF", "STAT_CLEAN", "PHAZE", 
+                "SWITCH_DEFENSIVE", "ATTACK_PIVOT", "PROTECT", "SWITCH_OFFENSIVE", 
+                "DISRUPTION", "ATTACK_TECH", "STATUS", "DEBUFF", "STAT_CLEAN", "PHAZE", 
                 "HEAL", "CLEAN_HAZARD", "HEAL_STATUS", "FIELD_CONTROL", 
                 "HAZARD", "BUFF", "ATTACK_STRONG", "ATTACK_PREDICTIVE"
             ],
 
             TacticalMode.LEAD: [
-                "HAZARD", "FIELD_CONTROL", "ATTACK_PIVOT", "DEBUFF", 
-                "ATTACK_STRONG", "BUFF", "STATUS", "PROTECT", 
+                "HAZARD", "FIELD_CONTROL", "ATTACK_PIVOT", "DISRUPTION", 
+                "ATTACK_STRONG", "STATUS", "DEBUFF", "BUFF",  "PROTECT", 
                 "CLEAN_HAZARD", "SWITCH_DEFENSIVE", "SWITCH_OFFENSIVE",
                 "ATTACK_PREDICTIVE", "ATTACK_TECH", "STAT_CLEAN", "HEAL_STATUS", "PHAZE"
             ],
         
             TacticalMode.WALLBREAK: [
-                "ATTACK_TECH", "STATUS", "BUFF", "ATTACK_PIVOT",
+                "ATTACK_TECH", "DISRUPTION", "STATUS", "BUFF", "ATTACK_PIVOT",
                 "DEBUFF", "HAZARD", "ATTACK_STRONG", "ATTACK_PREDICTIVE",
                 "HEAL", "CLEAN_HAZARD", "PROTECT", "SWITCH_OFFENSIVE",
                 "STAT_CLEAN", "HEAL_STATUS", "PHAZE", "FIELD_CONTROL", "SWITCH_DEFENSIVE"
@@ -149,15 +150,64 @@ class InstinctCore:
         return "CRIT"
 
     def get_weather_state(self, battle):
-        if battle.fields:
-            field_keys = [str(f).upper() for f in battle.fields.keys()]
-            if any("TRICK_ROOM" in f for f in field_keys): 
-                return "TRICK_ROOM"
-                
-        if battle.weather:
-            w_name = next(iter(battle.weather)).name
-            if w_name in ["HAIL", "SNOW", "SANDSTORM"]: return "DAMAGE"
-            if w_name in ["RAINDANCE", "PRIMORDIALSEA", "SUNNYDAY", "DESOLATELAND"]: return "BUFF"
+        active = battle.active_pokemon
+        if not active: return "NORMAL"
+
+        current_weather = next(iter(battle.weather)).name.upper() if battle.weather else "CLEAR"
+        current_fields = [str(f).upper() for f in battle.fields.keys()]
+        my_side = [str(k).upper() for k in battle.side_conditions.keys()]
+        
+        my_types = [t.name for t in active.types if t]
+        my_ability = str(active.ability).lower() if active.ability else ""
+        my_spe = active.base_stats.get('spe', 100)
+        my_role = self.get_role(active).name
+        
+        synergies = []
+        
+        # 1. POWER UP (Dano ampliado - Ex: Heatran no Sol)
+        if current_weather in ["RAINDANCE", "PRIMORDIALSEA"] and "WATER" in my_types: synergies.append("POWER")
+        elif current_weather in ["SUNNYDAY", "DESOLATELAND"] and "FIRE" in my_types: synergies.append("POWER")
+        elif "ELECTRIC_TERRAIN" in current_fields and "ELECTRIC" in my_types: synergies.append("POWER")
+        elif "GRASSY_TERRAIN" in current_fields and "GRASS" in my_types: synergies.append("POWER")
+        elif "PSYCHIC_TERRAIN" in current_fields and "PSYCHIC" in my_types: synergies.append("POWER")
+        elif "MISTY_TERRAIN" in current_fields and "FAIRY" in my_types: synergies.append("POWER")
+        elif my_ability in ['sandforce', 'solarpower']: synergies.append("POWER")
+        
+        # 2. SPEED UP (Controle de Turno - Ex: Tanks no Trick Room, Swift Swim)
+        if "TAILWIND" in my_side: synergies.append("SPEED")
+        elif current_weather in ["RAINDANCE", "PRIMORDIALSEA"] and my_ability == 'swiftswim': synergies.append("SPEED")
+        elif current_weather in ["SUNNYDAY", "DESOLATELAND"] and my_ability == 'chlorophyll': synergies.append("SPEED")
+        elif current_weather == "SANDSTORM" and my_ability == 'sandrush': synergies.append("SPEED")
+        elif current_weather in ["HAIL", "SNOW", "SNOWSCAPE"] and my_ability == 'slushrush': synergies.append("SPEED")
+        elif "ELECTRIC_TERRAIN" in current_fields and my_ability == 'surgesurfer': synergies.append("SPEED")
+        # A Mágica do Trick Room: Tanks e Pokémon lentos viram monstros de velocidade
+        elif "TRICK_ROOM" in current_fields and (my_spe <= 65): synergies.append("SPEED")
+
+        # 3. DEFENSE / SUSTAIN (Evasão, Cura e Resistência - Ex: Dry Skin, Sand Veil)
+        if current_weather in ["RAINDANCE", "PRIMORDIALSEA"] and my_ability in ['raindish', 'dryskin', 'hydration']: synergies.append("DEFENSE")
+        elif current_weather == "SANDSTORM" and ("ROCK" in my_types or my_ability in ['sandveil']): synergies.append("DEFENSE")
+        elif current_weather in ["HAIL", "SNOW", "SNOWSCAPE"] and ("ICE" in my_types or my_ability in ['snowcloak', 'icebody']): synergies.append("DEFENSE")
+        elif current_weather in ["SUNNYDAY", "DESOLATELAND"] and my_ability == 'leafguard': synergies.append("DEFENSE")
+        
+        # 4. HOSTILE (Redução de poder ou dano passivo)
+        hostile = False
+        if current_weather in ["RAINDANCE", "PRIMORDIALSEA"] and "FIRE" in my_types: hostile = True
+        elif current_weather in ["SUNNYDAY", "DESOLATELAND"] and ("WATER" in my_types or my_ability == 'dryskin'): hostile = True
+        elif current_weather == "SANDSTORM" and not ("ROCK" in my_types or "GROUND" in my_types or "STEEL" in my_types or "magicguard" in my_ability or "overcoat" in my_ability): hostile = True
+        elif current_weather == "HAIL" and not ("ICE" in my_types or "magicguard" in my_ability or "overcoat" in my_ability): hostile = True
+        elif "TRICK_ROOM" in current_fields and my_spe >= 90: hostile = True # Sweepers rápidos odeiam Trick Room
+
+        # --- TRADUÇÃO DIRETA PARA A TABELA Q ---
+        if synergies:
+            if "POWER" in synergies and "SPEED" in synergies: return "FIELD_SWEEP" # Modo Deus (Bate forte e primeiro)
+            if "POWER" in synergies: return "FIELD_POWER"     # Dano massivo, incentiva ataques fortes
+            if "SPEED" in synergies: return "FIELD_SPEED"     # Turno garantido, incentiva flanquear/curar
+            if "DEFENSE" in synergies: return "FIELD_DEFENSE" # Incentiva setup e stall
+        elif hostile:
+            return "FIELD_HOSTILE" # Avisa o Cérebro que as coisas estão difíceis para este Pokémon
+        elif current_weather not in ["CLEAR", "NONE"] or current_fields:
+            return "FIELD_NEUTRAL" # O campo está ativo, mas não muda a física deste Pokémon
+        
         return "NORMAL"
 
     def get_speed_tier(self, battle):
@@ -177,12 +227,25 @@ class InstinctCore:
         return "CLEAN"
 
     def get_boost_state(self, pokemon):
-        if not pokemon or not pokemon.boosts: return "NEUTRAL"
-        relevant_boosts = [v for k, v in pokemon.boosts.items() if k in ['atk', 'def', 'spa', 'spd', 'spe']]
-        if not relevant_boosts: return "NEUTRAL"
-        if any(v > 0 for v in relevant_boosts): return "BUFFED"
-        if any(v < 0 for v in relevant_boosts): return "DEBUFF"
-        return "NEUTRAL"
+        if not pokemon or pokemon.fainted: return "NEUTRAL"
+        state = "NEUTRAL"
+        
+        if pokemon.boosts:
+            relevant_boosts = [v for k, v in pokemon.boosts.items() if k in ['atk', 'def', 'spa', 'spd', 'spe']]
+            if any(v > 0 for v in relevant_boosts): state = "BUFFED"
+            elif any(v < 0 for v in relevant_boosts): state = "DEBUFF"
+
+        # --- A VISÃO DO STATUS COMO NERF ---
+        if pokemon.status:
+            s_name = pokemon.status.name
+            # Burn corta o ataque físico pela metade
+            if s_name == 'BRN' and self._is_physical(pokemon):
+                state = "DEBUFF" if state == "NEUTRAL" else state + "_DEBUFF"
+            # Paralysis corta a velocidade pela metade
+            elif s_name == 'PAR':
+                state = "DEBUFF" if state == "NEUTRAL" else state + "_DEBUFF"
+                
+        return state
 
     def get_hazard_state(self, side_conditions):
         if not side_conditions: return "CLEAR"
@@ -383,86 +446,152 @@ class InstinctCore:
             
         bp = float(move.base_power)
         level = float(getattr(attacker, 'level', 100))
+        attacker_ability = str(getattr(attacker, 'ability', '')).lower()
+        item_str = str(getattr(attacker, 'item', '')).lower()
         
-        # --- 1. ATUALIZAÇÃO MULTI-HIT ---
-        multi_hit_moves = ['iciclespear', 'rockblast', 'bulletseed', 'tailslap', 'pinmissile', 'boneclub', 'scaleshot', 'watershuriken']
+        # --- 0. TECHNICIAN (Calculado antes dos hits múltiplos) ---
+        # Aumenta em 50% o poder de golpes com 60 de BP ou menos
+        if attacker_ability == 'technician' and bp <= 60:
+            bp *= 1.5
+        
+        # --- 1. MULTI-HIT ---
+        multi_hit_moves = ['iciclespear', 'rockblast', 'bulletseed', 'tailslap', 'pinmissile', 'boneclub', 'scaleshot', 'watershuriken', 'dualwingbeat', 'bonemerang']
         if move.id in multi_hit_moves:
-            attacker_ability = str(getattr(attacker, 'ability', '')).lower()
             if attacker_ability == 'skilllink':
-                bp *= 5.0  # Dano máximo garantido
+                bp *= 5.0  # Dano máximo garantido para golpes variáveis (5 hits)
+            elif move.id in ['dualwingbeat', 'bonemerang']:
+                bp *= 2.0  # Golpes que SEMPRE batem exatamente 2 vezes
             else:
-                bp *= 3.0  # Dano médio esperado (3 hits)
+                bp *= 3.0  # Dano médio esperado para golpes de 2 a 5 hits
 
-        # Identificação de Atributos Ofensivos/Defensivos
+        # --- 2. MODIFICADORES DE BASE POWER (Habilidades de Categoria) ---
+        move_flags = getattr(move, 'flags', {})
+        
+        if attacker_ability == 'ironfist' and 'punch' in move_flags: bp *= 1.2
+        elif attacker_ability == 'strongjaw' and 'bite' in move_flags: bp *= 1.5
+        elif attacker_ability == 'sharpness' and 'slicing' in move_flags: bp *= 1.5
+        elif attacker_ability == 'toughclaws' and 'contact' in move_flags: bp *= 1.3
+        elif attacker_ability == 'megalauncher' and 'pulse' in move_flags: bp *= 1.5
+        elif attacker_ability == 'sheerforce' and getattr(move, 'secondary', False): bp *= 1.3
+        elif attacker_ability == 'waterbubble' and move.type and move.type.name == 'WATER': bp *= 2.0
+        elif attacker_ability == 'transistor' and move.type and move.type.name == 'ELECTRIC': bp *= 1.3 # Atualizado na Gen 9
+        elif attacker_ability == 'dragonsmaw' and move.type and move.type.name == 'DRAGON': bp *= 1.5
+
+        # --- 3. IDENTIFICAÇÃO DE ATRIBUTOS E MODIFICADORES DE STATUS (Choice, Guts, etc) ---
         if move.category.name == "PHYSICAL":
             atk = self.estimate_stat(attacker, 'atk')
+            
+            # Modificadores Físicos
+            if item_str == 'choiceband': atk *= 1.5
+            if attacker_ability in ['hugepower', 'purepower']: atk *= 2.0
+            if attacker_ability == 'hustle': atk *= 1.5
+            if attacker_ability == 'guts' and attacker.status: atk *= 1.5
+            
             if move.id == 'bodypress': atk = self.estimate_stat(attacker, 'def')
             defense = self.estimate_stat(defender, 'def')
         else:
             atk = self.estimate_stat(attacker, 'spa')
+            
+            # Modificadores Especiais
+            if item_str == 'choicespecs': atk *= 1.5
+            
             defense = self.estimate_stat(defender, 'spd')
             if move.id in ['psyshock', 'psystrike', 'secretsword']: 
                 defense = self.estimate_stat(defender, 'def')
                 
         if defense <= 0: defense = 1
         
+        # Fórmula Base de Dano
         base_dmg = ((((2 * level / 5) + 2) * atk * bp / defense) / 50) + 2
         
-        stab = 1.5 if move.type in attacker.types else 1.0
+        # --- 4. MULTIPLICADORES TÁTICOS (STAB, Fraqueza, Itens de Dano Final) ---
+        # Adaptability dobra o STAB em vez de 1.5x
+        stab_multiplier = 2.0 if attacker_ability == 'adaptability' else 1.5
+        stab = stab_multiplier if move.type in attacker.types else 1.0
+        
         type_mod = defender.damage_multiplier(move)
+        
+        # Tinted Lens (Ignora resistências cortando-as pela metade)
+        if attacker_ability == 'tintedlens' and type_mod < 1.0:
+            type_mod *= 2.0
+
+        # Modificadores de Dano Final por Item
+        item_mod = 1.0
+        if item_str == 'lifeorb': item_mod = 1.3
+        elif item_str == 'expertbelt' and type_mod > 1.0: item_mod = 1.2
+        elif item_str == 'muscleband' and move.category.name == "PHYSICAL": item_mod = 1.1
+        elif item_str == 'wiseglasses' and move.category.name == "SPECIAL": item_mod = 1.1
         
         margin = 0.95
         
-        # --- 2. ATUALIZAÇÃO: GOLPES DE 2 TURNOS E HERB ---
+        # --- 5. GOLPES DE 2 TURNOS E HERB ---
         charge_moves = ['fly', 'bounce', 'dig', 'dive', 'phantomforce', 'shadowforce', 'solarbeam', 'solarblade', 'skullbash', 'meteorbeam']
         recharge_moves = ['hyperbeam', 'gigaimpact', 'rockwrecker', 'roaroftime', 'frenzyplant', 'blastburn', 'hydrocannon']
         
-        item_str = str(getattr(attacker, 'item', '')).lower()
-        weather = next(iter(battle.weather)).name if battle and battle.weather else "CLEAR"
+        weather = next(iter(battle.weather)).name.upper() if battle and battle.weather else "CLEAR"
         known_opp_moves = [m.id for m in defender.moves.values()]
         
         if move.id in charge_moves:
             is_instant = False
-            # Checa a Power Herb
-            if item_str == 'powerherb':
-                is_instant = True
-            # Checa o Clima para Solar Beam/Blade
-            elif move.id in ['solarbeam', 'solarblade'] and weather in ['SUNNYDAY', 'DESOLATELAND']:
-                is_instant = True
+            if item_str == 'powerherb': is_instant = True
+            elif move.id in ['solarbeam', 'solarblade'] and weather in ['SUNNYDAY', 'DESOLATELAND']: is_instant = True
                 
             if not is_instant:
-                # Debuff severo por dar um turno livre ao oponente para setup/troca
                 margin *= 0.4
-                
-                # Fraquezas táticas extremas durante o turno de invulnerabilidade
-                if move.id == 'dig' and 'earthquake' in known_opp_moves:
-                    margin *= 0.1 # Punição extrema (Leva dobro de dano no subsolo)
-                elif move.id in ['fly', 'bounce'] and any(m in known_opp_moves for m in ['thunder', 'hurricane']):
-                    margin *= 0.1 # Punição extrema (Leva dano garantido no ar)
+                if move.id == 'dig' and 'earthquake' in known_opp_moves: margin *= 0.1 
+                elif move.id in ['fly', 'bounce'] and any(m in known_opp_moves for m in ['thunder', 'hurricane']): margin *= 0.1 
                     
         elif move.id in recharge_moves:
-            # Golpes que travam o usuário APÓS o ataque sempre recebem penalidade tática pesada
-            # (Power Herb não afeta recargas!)
             margin *= 0.45
 
-        ignores_screens = move.id in ['brickbreak', 'psychicfangs'] or str(getattr(attacker, 'ability', '')).lower() == 'infiltrator'
-        
+        # --- 6. BARREIRAS (SCREENS) ---
+        ignores_screens = move.id in ['brickbreak', 'psychicfangs'] or attacker_ability == 'infiltrator'
         if battle and not ignores_screens:
-            if defender in battle.team.values():
-                side_to_check = battle.side_conditions
-            else:
-                side_to_check = battle.opponent_side_conditions
-                
+            side_to_check = battle.side_conditions if defender in battle.team.values() else battle.opponent_side_conditions
             active_screens = [str(k).upper() for k in side_to_check.keys()]
             
-            if move.category.name == "PHYSICAL":
-                if 'REFLECT' in active_screens or 'AURORA_VEIL' in active_screens:
-                    margin *= 0.5 
-            elif move.category.name == "SPECIAL":
-                if 'LIGHT_SCREEN' in active_screens or 'AURORA_VEIL' in active_screens:
-                    margin *= 0.5 
+            if move.category.name == "PHYSICAL" and ('REFLECT' in active_screens or 'AURORA_VEIL' in active_screens): margin *= 0.5 
+            elif move.category.name == "SPECIAL" and ('LIGHT_SCREEN' in active_screens or 'AURORA_VEIL' in active_screens): margin *= 0.5 
+
+        # --- 7. CLIMA, TERRENO E HABILIDADES APLICÁVEIS ---
+        weather_mod = 1.0
+        terrain_mod = 1.0
         
-        final_dmg = base_dmg * stab * type_mod * margin
+        if battle:
+            move_type = move.type.name if move.type else ""
+            current_fields = [str(f).upper() for f in battle.fields.keys()]
+            
+            # Multiplicadores de Clima
+            if weather in ["RAINDANCE", "PRIMORDIALSEA"]:
+                if move_type == "WATER": weather_mod = 1.5
+                elif move_type == "FIRE": weather_mod = 0.5
+            elif weather in ["SUNNYDAY", "DESOLATELAND"]:
+                if move_type == "FIRE": weather_mod = 1.5
+                elif move_type == "WATER": weather_mod = 0.5
+            elif weather == "SANDSTORM" and attacker_ability == 'sandforce' and move_type in ['ROCK', 'GROUND', 'STEEL']:
+                weather_mod = 1.3
+                    
+            # Multiplicadores de Terreno
+            def is_grounded(pokemon):
+                if "FLYING" in [t.name for t in pokemon.types if t]: return False
+                if str(getattr(pokemon, 'ability', '')).lower() == "levitate": return False
+                if str(getattr(pokemon, 'item', '')).lower() == "airballoon": return False
+                return True
+
+            attacker_grounded = is_grounded(attacker)
+            defender_grounded = is_grounded(defender)
+
+            if "ELECTRIC_TERRAIN" in current_fields and move_type == "ELECTRIC" and attacker_grounded: terrain_mod = 1.3
+            elif "GRASSY_TERRAIN" in current_fields:
+                if move_type == "GRASS" and attacker_grounded: terrain_mod = 1.3
+                if move.id in ["earthquake", "bulldoze", "magnitude"] and defender_grounded: terrain_mod = 0.5
+            elif "PSYCHIC_TERRAIN" in current_fields and move_type == "PSYCHIC" and attacker_grounded: terrain_mod = 1.3
+            elif "MISTY_TERRAIN" in current_fields and move_type == "DRAGON" and defender_grounded: terrain_mod = 0.5
+
+        # ==========================================
+        # CÁLCULO FINAL DE DANOS COM TODOS OS FATORES
+        # ==========================================
+        final_dmg = base_dmg * stab * type_mod * item_mod * margin * weather_mod * terrain_mod
         max_hp = max(1, self.estimate_stat(defender, 'hp'))
         
         return final_dmg / max_hp
@@ -489,6 +618,7 @@ class InstinctCore:
         if move_id in ['protect', 'detect', 'spikyshield', 'kingsshield', 'banefulbunker', 'burningbulwark', 'silktrap', 'obstruct', 'endure']: return MoveCategory.PROTECT
         if move_id in ['recover', 'roost', 'moonlight', 'slackoff', 'morningsun', 'synthesis', 'softboiled', 'milkdrink', 'shoreup', 'strengthsap']: return MoveCategory.HEAL
         if move_id in ['reflect', 'lightscreen', 'auroraveil']: return MoveCategory.BARRIER
+        if move.id in ['taunt', 'torment', 'encore', 'disable']: return MoveCategory.DISRUPTION
 
         if move.category.name == "STATUS":
             if getattr(move, 'heal', 0): return MoveCategory.HEAL
@@ -671,9 +801,15 @@ class InstinctCore:
 
         # --- 7. PREVENÇÃO DE PROTECT CONSECUTIVO ---
         if move.id in ['protect', 'detect', 'spikyshield', 'kingsshield', 'banefulbunker', 'burningbulwark', 'silktrap', 'obstruct', 'endure']:
-            if history and 'last_action' in history:
-                last_action_tuple = history.get('last_action')
-                if last_action_tuple and "PROTECT" in last_action_tuple[0]:
+            if history:
+                prev_act = history.get('prev_action')
+                last_act = history.get('last_action')
+                
+                # Garante a leitura correta quer seja String ou Tupla
+                str_prev = str(prev_act[0]) if isinstance(prev_act, tuple) else str(prev_act)
+                str_last = str(last_act[0]) if isinstance(last_act, tuple) else str(last_act)
+                
+                if "PROTECT" in str_prev or "PROTECT" in str_last:
                     return True
 
         # --- 8. CENÁRIO DE ÚLTIMO POKÉMON E PHAZING ---
@@ -727,9 +863,9 @@ class InstinctCore:
                 return True
                 
         # B. Bloqueia cura de Status da equipe se ninguém estiver com Status negativo
-        if move.id in ['aromatherapy', 'healbell']:
-            team_has_status = any(m.status is not None for m in battle.team.values())
-            if not team_has_status:
+        if move.id in ['aromatherapy', 'healbell', 'junglehealing']:
+            team_needs_heal = any(m.status is not None and not m.fainted for m in battle.team.values())
+            if not team_needs_heal: 
                 return True
 
         # --- 11. Terrenos ---
@@ -742,6 +878,22 @@ class InstinctCore:
                 if grounded_opp:
                     if 'MISTY_TERRAIN' in active_fields: return True
                     if 'ELECTRIC_TERRAIN' in active_fields and move.status.name == 'SLP': return True
+
+        # --- 12. FILTRO DE DISRUPTION ---
+        if move.id in ['taunt', 'torment', 'encore', 'disable']:
+            # 1. Verifica se o efeito já está ativo no oponente
+            if opponent.effects:
+                # O poke-env guarda efeitos como Effect.TAUNT, Effect.ENCORE, etc.
+                if any(move.id in str(e).lower() for e in opponent.effects):
+                    return True
+            
+            # 2. Imunidades Biológicas (Mestre do Competitivo)
+            opp_abilities = [str(opponent.ability).lower()] if opponent.ability else []
+            if opponent.possible_abilities:
+                opp_abilities.extend([str(a).lower() for a in opponent.possible_abilities])
+                
+            if move.id == 'taunt' and any(ab in opp_abilities for ab in ['oblivious', 'aromaveil']):
+                return True
                     
         return False
 

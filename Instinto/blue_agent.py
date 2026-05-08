@@ -125,7 +125,7 @@ class BLUE(Player):
             
             # --- CORREÇÃO: Só processa se a recompensa NÃO foi processada no turno ---
             if history and not history.get('reward_processed', False):
-                reward = self.brain.calculate_reward(battle, history)
+                reward = self.brain.calculate_reward(battle, history, current_state)
                 self.total_reward_sum += reward
                 
                 last_state = history.get('state')
@@ -171,7 +171,7 @@ class BLUE(Player):
             current_state = self.core.get_state(battle)
             
             if history and not battle.finished and not history.get('reward_processed', False):
-                reward = self.brain.calculate_reward(battle, history)
+                reward = self.brain.calculate_reward(battle, history, current_state)
                 self.total_reward_sum += reward
                 last_state = history.get('state')
                 last_action_tuple = history.get('last_action')
