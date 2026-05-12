@@ -12,6 +12,22 @@ Z_CRYSTAL_MAP = {
 
 class MaxDamagePlayer(Player):
     def choose_move(self, battle):
+        # --- TRAVA DE SEGURANÇA PARA TROCAS FORÇADAS ---
+        switch_forced = False
+        if isinstance(battle.force_switch, list): 
+            switch_forced = any(battle.force_switch)
+        else: 
+            switch_forced = bool(battle.force_switch)
+
+        # Se a troca for obrigatória ou o Pokémon ativo desmaiou
+        if (switch_forced or (battle.active_pokemon and battle.active_pokemon.fainted)) and battle.available_switches:
+            # Escolhe o primeiro Pokémon disponível no banco (o MaxDamage não precisa pensar muito aqui)
+            return self.create_order(battle.available_switches[0])
+            
+        # Proteção extra: se não há ataques disponíveis por algum motivo de bloqueio (Taunt/Encore/Disable)
+        if not battle.available_moves and battle.available_switches:
+            return self.create_order(battle.available_switches[0])
+            
         if battle.available_moves:
             # 1. Escolhe o golpe mais forte
             best_move = max(battle.available_moves, key=lambda move: move.base_power)

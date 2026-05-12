@@ -6,9 +6,11 @@ import logging
 import csv
 import warnings
 import traceback
-import threading  # Usado para o Lock do Pickle
+import threading
 import json
 import argparse
+import subprocess
+
 
 # --- 1. CONFIGURAÇÃO DE CAMINHOS ---
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -97,9 +99,9 @@ class BLUE(Player):
         try:
             with open(self.paths['csv'], 'w', newline='') as f:
                 writer = csv.writer(f)
-                writer.writerow(["Batalhas", "WinRate_Bloco", "Epsilon", "Reward", "Ghost_Battles"])
+                writer.writerow(["Batalhas", "WinRate_Bloco", "Epsilon", "Reward", "Ghost_Battles", "Visitas_Est", "Confianca"])
         except: pass
-
+    
     def save_brain_silently(self):
         with self._save_lock:
             # Salva usando o nome de arquivo passado pelo Circuito
@@ -122,34 +124,26 @@ class BLUE(Player):
 
         try:
             history = self.battle_history.get(battle.battle_tag, {})
-            
-            # --- CORREÇÃO: Só processa se a recompensa NÃO foi processada no turno ---
             if history and not history.get('reward_processed', False):
-                reward = self.brain.calculate_reward(battle, history, current_state)
+                reward = self.brain.calculate_reward(battle, history, None)
                 self.total_reward_sum += reward
-                
                 last_state = history.get('state')
                 last_action_tuple = history.get('last_action')
-                
                 if last_state and last_action_tuple:
-                    current_state = ("TERMINAL_WIN",) if battle.won else ("TERMINAL_LOSS",)
-                    self.brain.update_feedback(current_state, last_state, last_action_tuple, reward)
-                
+                    terminal_state = ("TERMINAL_WIN",) if battle.won else ("TERMINAL_LOSS",)
+                    self.brain.update_feedback(terminal_state, last_state, last_action_tuple, reward)
                 history['reward_processed'] = True
             
-            # Remove do history independente
             if battle.battle_tag in self.battle_history:
                 del self.battle_history[battle.battle_tag]
                 
         except Exception as e:
             print(f"[Aviso] Erro ao processar fim de batalha: {e}")
 
-        # --- REMOVER save_brain_silently duplicado ---
-        self.save_brain_silently()
  
         if hasattr(self.brain, 'replay_experience'):
             self.brain.replay_experience()
-
+        
     def teampreview(self, battle):
         try:
             return self.core.get_best_lead(battle)
@@ -171,7 +165,7 @@ class BLUE(Player):
             current_state = self.core.get_state(battle)
             
             if history and not battle.finished and not history.get('reward_processed', False):
-                reward = self.brain.calculate_reward(battle, history, current_state)
+                reward = self.brain.calculate_reward(battle, history)
                 self.total_reward_sum += reward
                 last_state = history.get('state')
                 last_action_tuple = history.get('last_action')
@@ -374,7 +368,7 @@ class BLUE(Player):
 # =============================================================================
 async def main():
     n_battles = args.n_battles
-    CONCURRENCY = 7
+    CONCURRENCY = 5
     
     team_builder = RandomTeamFromPool(TEAMS_LIST)
     
@@ -474,7 +468,6 @@ async def main():
             except Exception:
                 pass
             
-            # --- CORREÇÃO DO 499: Respiro de 1 segundo para a rede descarregar a última mensagem ---
             await asyncio.sleep(1)
             bot.check_finished_battles()
             
@@ -484,22 +477,58 @@ async def main():
 
             if processed_this_block > 0:
                 win_rate_bloco = (bot.block_wins / processed_this_block) * 100
-                print(f"[Progresso] {completed} Batalhas | Win Rate (Bloco): {win_rate_bloco:.1f}% | Recompensa Total: {bot.total_reward_sum:.0f} | Estados: {len(bot.brain.q_table)} | Epsilon: {bot.brain.epsilon:.3f} | Erros (Rede): {bot.aborted_battles}")
                 
-                # --- O GATILHO POR BLOCO ESTÁ AQUI ---
+                # 1. Extração de métricas de maturidade (Visitas e Confiança)
+                avg_visits = 0.0
+                conf_rate = 0.0
+                try:
+                    # Tenta obter o raio-x do cérebro
+                    total_visits, avg_visits, conf_rate = bot.brain.inspect_brain()
+                    print(f"[Progresso] {completed} Batalhas | Win Rate (Bloco): {win_rate_bloco:.1f}% | "
+                          f"Estados: {len(bot.brain.q_table)} | Eps: {bot.brain.epsilon:.3f} | "
+                          f"Visitas/Est: {avg_visits:.2f} | Confiança: {conf_rate:.1f}%")
+                except AttributeError:
+                    # Fallback caso a função ainda não tenha sido adicionada ao blue_brain.py
+                    print(f"[Progresso] {completed} Batalhas | Win Rate (Bloco): {win_rate_bloco:.1f}% | "
+                          f"Estados: {len(bot.brain.q_table)} | Eps: {bot.brain.epsilon:.3f}")
+                
                 if hasattr(bot.brain, 'decay_epsilon'):
                     bot.brain.decay_epsilon()
                     
-                # Salva a linha no CSV
+                # 2. Registro no CSV com os novos dados
                 try:
                     with open(bot.paths['csv'], 'a', newline='') as f:
                         writer = csv.writer(f)
-                        writer.writerow([completed, f"{win_rate_bloco:.1f}", f"{bot.brain.epsilon:.3f}", f"{bot.total_reward_sum:.0f}", bot.aborted_battles])
+                        writer.writerow([
+                            completed, 
+                            f"{win_rate_bloco:.1f}", 
+                            f"{bot.brain.epsilon:.3f}", 
+                            f"{bot.total_reward_sum:.0f}", 
+                            bot.aborted_battles,
+                            f"{avg_visits:.2f}",
+                            f"{conf_rate:.1f}"
+                        ])
                 except: pass
                 
-                # Reseta as vitórias do bloco e salva a Q-Table
                 bot.block_wins = 0
                 bot.save_brain_silently()
+                
+                # 3. Execução paralela do inspect_brain.py com o caminho corrigido
+                try:
+                    import subprocess
+                    script_path = r"C:\Projetos Robotica Computacional\Projeto Showdown IA Pokemon\Bot-QV-Pokemon\Suporte_Treinamento\Suporte\inspect_brain.py"
+                    
+                    if os.path.exists(script_path):
+                        # Define o diretório de trabalho para que o script encontre seus próprios logs
+                        script_dir = os.path.dirname(script_path)
+                        subprocess.Popen(
+                            [sys.executable, script_path], 
+                            stdout=subprocess.DEVNULL, 
+                            stderr=subprocess.DEVNULL,
+                            cwd=script_dir
+                        )
+                except Exception:
+                    pass # Garante que falhas no gráfico não interrompam o treino
                         
     except KeyboardInterrupt:
         print("\n\n[!] Interrompido pelo usuário. Salvando...")

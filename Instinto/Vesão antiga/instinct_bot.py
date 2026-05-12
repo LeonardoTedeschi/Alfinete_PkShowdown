@@ -48,9 +48,10 @@ class MoveCategory(Enum):
     FIELD_CONTROL = 14
     HAZARD = 15
     BARRIER = 16
-    SWITCH_DEFENSIVE = 17
-    SWITCH_OFFENSIVE = 18
-    UNKNOWN = 19
+    DISRUPTION = 17
+    SWITCH_DEFENSIVE = 18
+    SWITCH_OFFENSIVE = 19
+    UNKNOWN = 20
 
 # =============================================================================
 # 2. O CÉREBRO HEURÍSTICO (INSTINCT BOT)
@@ -62,7 +63,7 @@ class InstinctBot(Player):
         
         self.mode_templates = {
             TacticalMode.PRESS: [
-                "ATTACK_PREDICTIVE", "ATTACK_STRONG", "BUFF", "ATTACK_TECH",
+                "ATTACK_PREDICTIVE", "ATTACK_STRONG", "BUFF", "ATTACK_TECH", "DISRUPTION",
                 "HAZARD", "FIELD_CONTROL", "ATTACK_PIVOT", "CLEAN_HAZARD", 
                 "STATUS", "DEBUFF", "HEAL", "HEAL_STATUS", "STAT_CLEAN", 
                 "PHAZE", "PROTECT", "SWITCH_OFFENSIVE", "SWITCH_DEFENSIVE"
@@ -70,29 +71,29 @@ class InstinctBot(Player):
             TacticalMode.CONTEST: [
                 "ATTACK_STRONG", "ATTACK_TECH", "PROTECT", "ATTACK_PIVOT",
                 "STATUS", "BUFF", "HEAL", "HAZARD", "CLEAN_HAZARD",
-                "DEBUFF", "FIELD_CONTROL", "ATTACK_PREDICTIVE", "STAT_CLEAN", 
+                "DEBUFF", "FIELD_CONTROL", "ATTACK_PREDICTIVE", "DISRUPTION", "STAT_CLEAN", 
                 "PHAZE", "HEAL_STATUS", "SWITCH_OFFENSIVE", "SWITCH_DEFENSIVE"
             ],
             TacticalMode.GRIND: [
-                "HAZARD", "STATUS", "HEAL", "PROTECT", "DEBUFF", 
+                "HAZARD", "STATUS", "HEAL", "PROTECT", "DISRUPTION", "DEBUFF", 
                 "CLEAN_HAZARD", "PHAZE", "STAT_CLEAN", "HEAL_STATUS", 
                 "BUFF", "FIELD_CONTROL", "ATTACK_TECH", "ATTACK_PIVOT", 
                 "SWITCH_OFFENSIVE", "SWITCH_DEFENSIVE", "ATTACK_STRONG", "ATTACK_PREDICTIVE"
             ],
             TacticalMode.ESCAPE: [
-                "SWITCH_DEFENSIVE", "ATTACK_PIVOT", "PROTECT", "SWITCH_OFFENSIVE",
-                "ATTACK_TECH", "STATUS", "DEBUFF", "STAT_CLEAN", "PHAZE", 
+                "SWITCH_DEFENSIVE", "ATTACK_PIVOT", "PROTECT", "SWITCH_OFFENSIVE", 
+                "DISRUPTION", "ATTACK_TECH", "STATUS", "DEBUFF", "STAT_CLEAN", "PHAZE", 
                 "HEAL", "CLEAN_HAZARD", "HEAL_STATUS", "FIELD_CONTROL", 
                 "HAZARD", "BUFF", "ATTACK_STRONG", "ATTACK_PREDICTIVE"
             ],
             TacticalMode.LEAD: [
-                "HAZARD", "FIELD_CONTROL", "ATTACK_PIVOT", "DEBUFF", 
-                "ATTACK_STRONG", "BUFF", "STATUS", "PROTECT", 
+                "HAZARD", "FIELD_CONTROL", "ATTACK_PIVOT", "DISRUPTION", 
+                "ATTACK_STRONG", "STATUS", "DEBUFF", "BUFF",  "PROTECT", 
                 "CLEAN_HAZARD", "SWITCH_DEFENSIVE", "SWITCH_OFFENSIVE",
                 "ATTACK_PREDICTIVE", "ATTACK_TECH", "STAT_CLEAN", "HEAL_STATUS", "PHAZE"
             ],
             TacticalMode.WALLBREAK: [
-                "ATTACK_TECH", "STATUS", "BUFF", "ATTACK_PIVOT",
+                "ATTACK_TECH", "DISRUPTION", "STATUS", "BUFF", "ATTACK_PIVOT",
                 "DEBUFF", "HAZARD", "ATTACK_STRONG", "ATTACK_PREDICTIVE",
                 "HEAL", "CLEAN_HAZARD", "PROTECT", "SWITCH_OFFENSIVE",
                 "STAT_CLEAN", "HEAL_STATUS", "PHAZE", "FIELD_CONTROL", "SWITCH_DEFENSIVE"
@@ -141,7 +142,9 @@ class InstinctBot(Player):
         else:
             base = pokemon.base_stats.get(stat_name, 50)
             role = self.get_role(pokemon)
-            if stat_name == 'hp': val = int(base * 2 + 204)
+            
+            if stat_name == 'hp':
+                val = int(base * 2 + 204)
             else:
                 calc_boosted = int((base * 2 + 99) * 1.1)
                 calc_invested = int(base * 2 + 99)
@@ -164,7 +167,8 @@ class InstinctBot(Player):
                     elif stat_name in ['def', 'spd']: val = calc_invested
                     else: val = calc_uninvested
 
-        if stat_name == 'spe': val *= self._get_speed_mod(pokemon)
+        if stat_name == 'spe':
+            val *= self._get_speed_mod(pokemon)
         else:
             modifier = pokemon.boosts.get(stat_name, 0)
             if modifier > 0: val *= (1 + 0.5 * modifier)
@@ -172,6 +176,7 @@ class InstinctBot(Player):
 
         item_str = str(pokemon.item).lower() if pokemon.item else ""
         item_mod = 1.0
+        
         if stat_name == 'spe' and item_str == 'choicescarf': item_mod = 1.5
         elif stat_name == 'atk' and item_str == 'choiceband': item_mod = 1.5
         elif stat_name == 'spa' and item_str == 'choicespecs': item_mod = 1.5
@@ -184,47 +189,120 @@ class InstinctBot(Player):
             
         bp = float(move.base_power)
         level = float(getattr(attacker, 'level', 100))
+        attacker_ability = str(getattr(attacker, 'ability', '')).lower()
+        item_str = str(getattr(attacker, 'item', '')).lower()
         
-        multi_hit_moves = ['iciclespear', 'rockblast', 'bulletseed', 'tailslap', 'pinmissile', 'boneclub', 'scaleshot', 'watershuriken']
+        if attacker_ability == 'technician' and bp <= 60:
+            bp *= 1.5
+        
+        multi_hit_moves = ['iciclespear', 'rockblast', 'bulletseed', 'tailslap', 'pinmissile', 'boneclub', 'scaleshot', 'watershuriken', 'dualwingbeat', 'bonemerang']
         if move.id in multi_hit_moves:
-            attacker_ability = str(getattr(attacker, 'ability', '')).lower()
-            bp *= 5.0 if attacker_ability == 'skilllink' else 3.0 
+            if attacker_ability == 'skilllink':
+                bp *= 5.0
+            elif move.id in ['dualwingbeat', 'bonemerang']:
+                bp *= 2.0
+            else:
+                bp *= 3.0
+
+        move_flags = getattr(move, 'flags', {})
+        if attacker_ability == 'ironfist' and 'punch' in move_flags: bp *= 1.2
+        elif attacker_ability == 'strongjaw' and 'bite' in move_flags: bp *= 1.5
+        elif attacker_ability == 'sharpness' and 'slicing' in move_flags: bp *= 1.5
+        elif attacker_ability == 'toughclaws' and 'contact' in move_flags: bp *= 1.3
+        elif attacker_ability == 'megalauncher' and 'pulse' in move_flags: bp *= 1.5
+        elif attacker_ability == 'sheerforce' and getattr(move, 'secondary', False): bp *= 1.3
+        elif attacker_ability == 'waterbubble' and move.type and move.type.name == 'WATER': bp *= 2.0
+        elif attacker_ability == 'transistor' and move.type and move.type.name == 'ELECTRIC': bp *= 1.3 
+        elif attacker_ability == 'dragonsmaw' and move.type and move.type.name == 'DRAGON': bp *= 1.5
 
         if move.category.name == "PHYSICAL":
-            atk = self.estimate_stat(attacker, 'def') if move.id == 'bodypress' else self.estimate_stat(attacker, 'atk')
+            atk = self.estimate_stat(attacker, 'atk')
+            if item_str == 'choiceband': atk *= 1.5
+            if attacker_ability in ['hugepower', 'purepower']: atk *= 2.0
+            if attacker_ability == 'hustle': atk *= 1.5
+            if attacker_ability == 'guts' and attacker.status: atk *= 1.5
+            if move.id == 'bodypress': atk = self.estimate_stat(attacker, 'def')
             defense = self.estimate_stat(defender, 'def')
         else:
             atk = self.estimate_stat(attacker, 'spa')
-            defense = self.estimate_stat(defender, 'def') if move.id in ['psyshock', 'psystrike', 'secretsword'] else self.estimate_stat(defender, 'spd')
+            if item_str == 'choicespecs': atk *= 1.5
+            defense = self.estimate_stat(defender, 'spd')
+            if move.id in ['psyshock', 'psystrike', 'secretsword']: 
+                defense = self.estimate_stat(defender, 'def')
                 
         if defense <= 0: defense = 1
         base_dmg = ((((2 * level / 5) + 2) * atk * bp / defense) / 50) + 2
-        stab = 1.5 if move.type in attacker.types else 1.0
+        
+        stab_multiplier = 2.0 if attacker_ability == 'adaptability' else 1.5
+        stab = stab_multiplier if move.type in attacker.types else 1.0
         type_mod = defender.damage_multiplier(move)
+        
+        if attacker_ability == 'tintedlens' and type_mod < 1.0:
+            type_mod *= 2.0
+
+        item_mod = 1.0
+        if item_str == 'lifeorb': item_mod = 1.3
+        elif item_str == 'expertbelt' and type_mod > 1.0: item_mod = 1.2
+        elif item_str == 'muscleband' and move.category.name == "PHYSICAL": item_mod = 1.1
+        elif item_str == 'wiseglasses' and move.category.name == "SPECIAL": item_mod = 1.1
+        
         margin = 0.95
         
         charge_moves = ['fly', 'bounce', 'dig', 'dive', 'phantomforce', 'shadowforce', 'solarbeam', 'solarblade', 'skullbash', 'meteorbeam']
         recharge_moves = ['hyperbeam', 'gigaimpact', 'rockwrecker', 'roaroftime', 'frenzyplant', 'blastburn', 'hydrocannon']
-        item_str = str(getattr(attacker, 'item', '')).lower()
-        weather = next(iter(battle.weather)).name if battle and battle.weather else "CLEAR"
+        weather = next(iter(battle.weather)).name.upper() if battle and battle.weather else "CLEAR"
         known_opp_moves = [m.id for m in defender.moves.values()]
         
         if move.id in charge_moves:
-            is_instant = item_str == 'powerherb' or (move.id in ['solarbeam', 'solarblade'] and weather in ['SUNNYDAY', 'DESOLATELAND'])
+            is_instant = False
+            if item_str == 'powerherb': is_instant = True
+            elif move.id in ['solarbeam', 'solarblade'] and weather in ['SUNNYDAY', 'DESOLATELAND']: is_instant = True
+                
             if not is_instant:
                 margin *= 0.4
-                if move.id == 'dig' and 'earthquake' in known_opp_moves: margin *= 0.1
-                elif move.id in ['fly', 'bounce'] and any(m in known_opp_moves for m in ['thunder', 'hurricane']): margin *= 0.1
+                if move.id == 'dig' and 'earthquake' in known_opp_moves: margin *= 0.1 
+                elif move.id in ['fly', 'bounce'] and any(m in known_opp_moves for m in ['thunder', 'hurricane']): margin *= 0.1 
+                    
         elif move.id in recharge_moves: margin *= 0.45
 
-        ignores_screens = move.id in ['brickbreak', 'psychicfangs'] or str(getattr(attacker, 'ability', '')).lower() == 'infiltrator'
+        ignores_screens = move.id in ['brickbreak', 'psychicfangs'] or attacker_ability == 'infiltrator'
         if battle and not ignores_screens:
             side_to_check = battle.side_conditions if defender in battle.team.values() else battle.opponent_side_conditions
             active_screens = [str(k).upper() for k in side_to_check.keys()]
-            if move.category.name == "PHYSICAL" and any(s in active_screens for s in ['REFLECT', 'AURORA_VEIL']): margin *= 0.5 
-            elif move.category.name == "SPECIAL" and any(s in active_screens for s in ['LIGHT_SCREEN', 'AURORA_VEIL']): margin *= 0.5 
-        
-        final_dmg = base_dmg * stab * type_mod * margin
+            if move.category.name == "PHYSICAL" and ('REFLECT' in active_screens or 'AURORA_VEIL' in active_screens): margin *= 0.5 
+            elif move.category.name == "SPECIAL" and ('LIGHT_SCREEN' in active_screens or 'AURORA_VEIL' in active_screens): margin *= 0.5 
+
+        weather_mod = 1.0
+        terrain_mod = 1.0
+        if battle:
+            move_type = move.type.name if move.type else ""
+            current_fields = [str(f).upper() for f in battle.fields.keys()]
+            if weather in ["RAINDANCE", "PRIMORDIALSEA"]:
+                if move_type == "WATER": weather_mod = 1.5
+                elif move_type == "FIRE": weather_mod = 0.5
+            elif weather in ["SUNNYDAY", "DESOLATELAND"]:
+                if move_type == "FIRE": weather_mod = 1.5
+                elif move_type == "WATER": weather_mod = 0.5
+            elif weather == "SANDSTORM" and attacker_ability == 'sandforce' and move_type in ['ROCK', 'GROUND', 'STEEL']:
+                weather_mod = 1.3
+                    
+            def is_grounded(pokemon):
+                if "FLYING" in [t.name for t in pokemon.types if t]: return False
+                if str(getattr(pokemon, 'ability', '')).lower() == "levitate": return False
+                if str(getattr(pokemon, 'item', '')).lower() == "airballoon": return False
+                return True
+
+            attacker_grounded = is_grounded(attacker)
+            defender_grounded = is_grounded(defender)
+
+            if "ELECTRIC_TERRAIN" in current_fields and move_type == "ELECTRIC" and attacker_grounded: terrain_mod = 1.3
+            elif "GRASSY_TERRAIN" in current_fields:
+                if move_type == "GRASS" and attacker_grounded: terrain_mod = 1.3
+                if move.id in ["earthquake", "bulldoze", "magnitude"] and defender_grounded: terrain_mod = 0.5
+            elif "PSYCHIC_TERRAIN" in current_fields and move_type == "PSYCHIC" and attacker_grounded: terrain_mod = 1.3
+            elif "MISTY_TERRAIN" in current_fields and move_type == "DRAGON" and defender_grounded: terrain_mod = 0.5
+
+        final_dmg = base_dmg * stab * type_mod * item_mod * margin * weather_mod * terrain_mod
         max_hp = max(1, self.estimate_stat(defender, 'hp'))
         return final_dmg / max_hp
 
@@ -242,6 +320,7 @@ class InstinctBot(Player):
         if move_id in ['protect', 'detect', 'spikyshield', 'kingsshield', 'banefulbunker', 'burningbulwark', 'silktrap', 'obstruct', 'endure']: return MoveCategory.PROTECT
         if move_id in ['recover', 'roost', 'moonlight', 'slackoff', 'morningsun', 'synthesis', 'softboiled', 'milkdrink', 'shoreup', 'strengthsap']: return MoveCategory.HEAL
         if move_id in ['reflect', 'lightscreen', 'auroraveil']: return MoveCategory.BARRIER
+        if move.id in ['taunt', 'torment', 'encore', 'disable']: return MoveCategory.DISRUPTION
 
         if move.category.name == "STATUS":
             if getattr(move, 'heal', 0): return MoveCategory.HEAL
@@ -259,17 +338,28 @@ class InstinctBot(Player):
         if not active or not opponent: return True
 
         opp_types = [t.name for t in opponent.types if t]
-        opp_abilities = []
-        if opponent.ability:
-            opp_abilities = [str(opponent.ability).lower()]
-        elif opponent.possible_abilities:
-            opp_abilities = [str(a).lower() for a in opponent.possible_abilities]
-        
-        if move.base_power > 0:
+        opp_abilities = [str(opponent.ability).lower()] if opponent.ability else []
+        if opponent.possible_abilities:
+            opp_abilities.extend([str(a).lower() for a in opponent.possible_abilities])
+            
+        move_type = move.type.name if move.type else ""
+
+        if move.category.name != "STATUS" and move.base_power > 0:
+            if move_type == "WATER" and any(ab in opp_abilities for ab in ['waterabsorb', 'dryskin', 'stormdrain']): return True
+            if move_type == "ELECTRIC" and any(ab in opp_abilities for ab in ['voltabsorb', 'motordrive', 'lightningrod']): return True
+            if move_type == "FIRE" and any(ab in opp_abilities for ab in ['flashfire', 'wellbakedbody']): return True
+            if move_type == "GRASS" and any(ab in opp_abilities for ab in ['sapsipper']): return True
+            if move_type == "GROUND" and any(ab in opp_abilities for ab in ['levitate', 'eartheater']): return True
+
             if opponent.damage_multiplier(move) == 0: return True
             if 'wonderguard' in opp_abilities and opponent.damage_multiplier(move) < 2 and move.id != 'struggle': return True
-            
-        if move.type and move.type.name == 'GROUND' and move.id != 'thousandarrows' and opponent.item and str(opponent.item).lower() == 'airballoon': return True
+            if move_type == 'GROUND' and move.id != 'thousandarrows' and opponent.item and str(opponent.item).lower() == 'airballoon': return True
+
+        if move.category.name == "STATUS" or move.base_power == 0:
+            targets_opponent = str(getattr(move, 'target', '')).lower() not in ['self', 'allyside', 'allyteam', 'adjacentally']
+            if targets_opponent:
+                if any(ab in opp_abilities for ab in ['magicbounce']): return True
+                if any(ab in opp_abilities for ab in ['goodasgold']): return True
 
         if move.id in ['defog', 'rapidspin', 'mortalspin', 'tidyup', 'courtchange']:
             has_hazard = False
@@ -284,20 +374,30 @@ class InstinctBot(Player):
                         break
             if not has_hazard: return True
 
-        move_priority = getattr(move, 'priority', 0)
-        if move.id in ['fakeout', 'firstimpression'] and not getattr(active, 'first_turn', False): return True
+        # === SOLUÇÃO PARA O ERRO DE PRIORIDADE ===
+        move_priority = 0
+        try:
+            move_priority = move.priority
+        except (KeyError, AttributeError):
+            move_priority = 0
+
+        if move.id in ['fakeout', 'firstimpression']:
+            if not getattr(active, 'first_turn', False):
+                return True
+
         if move_priority > 0:
-            if any(ab in opp_abilities for ab in ['dazzling', 'queenlymajesty', 'armortail']): return True
+            if any(ab in opp_abilities for ab in ['dazzling', 'queenlymajesty', 'armortail']):
+                return True
             if 'psychicsurge' in opp_abilities or any('psychicterrain' in str(f).lower() for f in battle.fields.keys()):
-                if 'FLYING' not in opp_types and not (opponent.item and str(opponent.item).lower() == 'airballoon') and 'levitate' not in opp_abilities: return True
+                if 'FLYING' not in opp_types and not (opponent.item and str(opponent.item).lower() == 'airballoon') and 'levitate' not in opp_abilities:
+                    return True
+        # =========================================
         
         if move.category.name == "STATUS":
             if active.ability == 'prankster' and 'DARK' in opp_types: return True
             if move.id in ['spore', 'sleeppowder', 'stunspore', 'poisonpowder', 'ragepowder'] and ('GRASS' in opp_types or 'overcoat' in opp_abilities): return True
             if move.id == 'thunderwave' and ('GROUND' in opp_types or 'ELECTRIC' in opp_types): return True
             if move.id == 'leechseed' and 'GRASS' in opp_types: return True
-            if any(ab in opp_abilities for ab in ['magicbounce']) and getattr(move, 'target', '') in ['normal', 'allAdjacentFoes', 'foeSide']: return True
-            if any(ab in opp_abilities for ab in ['goodasgold', 'magicguard']): return True 
             if move.id in ['confuseray', 'swagger'] and any(ab in opp_abilities for ab in ['owntempo', 'oblivious']): return True
 
             if move.status:
@@ -360,7 +460,7 @@ class InstinctBot(Player):
         if move.id in ['protect', 'detect', 'spikyshield', 'kingsshield', 'banefulbunker', 'burningbulwark', 'silktrap', 'obstruct', 'endure']:
             if history and 'last_action' in history:
                 last_action_tuple = history.get('last_action')
-                if last_action_tuple and "PROTECT" in last_action_tuple[0]: return True
+                if last_action_tuple and "PROTECT" in str(last_action_tuple[0]): return True
 
         opp_alive = len([m for m in battle.opponent_team.values() if not m.fainted])
         if move.id in ['roar', 'whirlwind', 'dragontail', 'circlethrow'] and (opp_alive <= 1 or 'suctioncups' in opp_abilities): return True 
@@ -377,6 +477,10 @@ class InstinctBot(Player):
         if move.id in ['recover', 'roost', 'slackoff', 'softboiled', 'milkdrink', 'shoreup', 'moonlight', 'morningsun', 'synthesis', 'healorder', 'wish'] or (hasattr(move, 'heal') and move.heal and move.category == "Status"):
             if active.current_hp_fraction >= 0.95: return True
         if move.id in ['aromatherapy', 'healbell'] and not any(m.status is not None for m in battle.team.values()): return True
+
+        if move.id in ['taunt', 'torment', 'encore', 'disable']:
+            if opponent.effects and any(move.id in str(e).lower() for e in opponent.effects): return True
+            if move.id == 'taunt' and any(ab in opp_abilities for ab in ['oblivious', 'aromaveil']): return True
 
         return False
 
@@ -467,7 +571,9 @@ class InstinctBot(Player):
     def get_available_actions(self, battle):
         available = set()
         if battle.available_switches:
-            available.update([MoveCategory.SWITCH_DEFENSIVE.name, MoveCategory.SWITCH_OFFENSIVE.name])
+            available.add(MoveCategory.SWITCH_DEFENSIVE.name)
+            available.add(MoveCategory.SWITCH_OFFENSIVE.name)
+            
         if battle.available_moves:
             damaging_types = set()  
             for move in battle.available_moves:
@@ -478,9 +584,22 @@ class InstinctBot(Player):
                     available.add(cat.name)
                     if cat in [MoveCategory.ATTACK_STRONG, MoveCategory.ATTACK_TECH, MoveCategory.ATTACK_PIVOT] and move.type:
                         damaging_types.add(move.type)
+                        
             if MoveCategory.ATTACK_STRONG.name in available and len(damaging_types) > 1 and any(not m.fainted and not m.active for m in battle.opponent_team.values()):
                 available.add(MoveCategory.ATTACK_PREDICTIVE.name)
-        return list(available) or (["SWITCH_DEFENSIVE", "SWITCH_OFFENSIVE"] if battle.available_switches else ["ATTACK_STRONG"])
+                
+        available_list = list(available)
+        if not available_list:
+            if battle.available_switches:
+                return [MoveCategory.SWITCH_DEFENSIVE.name, MoveCategory.SWITCH_OFFENSIVE.name]
+            else:
+                if battle.available_moves:
+                    cats = [self.classify_move(m).name for m in battle.available_moves]
+                    if MoveCategory.PROTECT.name in cats: return [MoveCategory.PROTECT.name]
+                    return list(set(c for c in cats if c != "UNKNOWN")) or ["ATTACK_STRONG"]
+                return ["ATTACK_STRONG"]
+
+        return available_list
 
     # =========================================================================
     # HELPERS DE ROLE
@@ -728,7 +847,6 @@ class InstinctBot(Player):
                     ranking_list.remove(b_intent)
                     ranking_list.insert(0, b_intent)
 
-        # Lethal Check
         has_lethal = False
         if "ATTACK_STRONG" in candidate_mask or "ATTACK_PREDICTIVE" in candidate_mask:
             for m in battle.available_moves:
@@ -907,7 +1025,13 @@ class InstinctBot(Player):
 
         try:
             cat = MoveCategory[base_action]
-            if cat in [MoveCategory.STATUS, MoveCategory.BUFF, MoveCategory.DEBUFF, MoveCategory.HAZARD, MoveCategory.HEAL, MoveCategory.FIELD_CONTROL, MoveCategory.CLEAN_HAZARD, MoveCategory.PROTECT, MoveCategory.ATTACK_PIVOT, MoveCategory.ATTACK_TECH, MoveCategory.STAT_CLEAN, MoveCategory.HEAL_STATUS, MoveCategory.PHAZE]:
+            non_offensive = [
+                MoveCategory.STATUS, MoveCategory.BUFF, MoveCategory.DEBUFF, MoveCategory.HAZARD, 
+                MoveCategory.HEAL, MoveCategory.FIELD_CONTROL, MoveCategory.CLEAN_HAZARD, 
+                MoveCategory.PROTECT, MoveCategory.ATTACK_PIVOT, MoveCategory.ATTACK_TECH, 
+                MoveCategory.STAT_CLEAN, MoveCategory.HEAL_STATUS, MoveCategory.PHAZE, MoveCategory.DISRUPTION
+            ]
+            if cat in non_offensive:
                 cands = [m for m in battle.available_moves if self.classify_move(m) == cat and not self.is_move_useless(m, opponent, battle)]
                 if cat == MoveCategory.HAZARD: cands = [m for m in cands if not self.is_hazard_already_set(m, battle)]
                 if cands: return self._select_best_move_in_category(cands, cat, active, opponent, battle)
@@ -931,7 +1055,17 @@ class InstinctBot(Player):
                 
                 for m in valid_moves:
                     score = self.estimate_damage_percent(m, active, opponent, battle)
-                    if getattr(m, 'priority', 0) > 0 and score >= opp_hp_frac: score += 5.0 
+                    
+                    # === SOLUÇÃO DE ERRO NO CÁLCULO DE DANO ===
+                    m_priority = 0
+                    try:
+                        m_priority = m.priority
+                    except (KeyError, AttributeError):
+                        m_priority = 0
+
+                    if m_priority > 0 and score >= opp_hp_frac: 
+                        score += 5.0 
+                    # ==========================================
                     
                     if m.id in ['bravebird', 'flareblitz', 'doubleedge', 'woodhammer', 'wildcharge']:
                         if score >= opp_hp_frac and opp_alive > 1:

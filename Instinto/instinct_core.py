@@ -638,6 +638,14 @@ class InstinctCore:
         active = battle.active_pokemon
         if not active or not opponent: return True
 
+        # ==========================================
+        # 0. A BARREIRA ABSOLUTA DE IMUNIDADE DE TIPO
+        # ==========================================
+        if move.category.name != "STATUS":
+            # Se o multiplicador for 0 (ex: Elétrico vs Terra, Normal vs Fantasma), o golpe é inútil.
+            if opponent.damage_multiplier(move) == 0:
+                return True
+
         opp_types = [t.name for t in opponent.types if t]
         opp_abilities = []
         if opponent.ability:
@@ -645,40 +653,46 @@ class InstinctCore:
         elif opponent.possible_abilities:
             opp_abilities = [str(a).lower() for a in opponent.possible_abilities]
         
-        # --- 1. FILTRO DE DANO E IMUNIDADE ---
-        if move.base_power > 0:
-            if opponent.damage_multiplier(move) == 0:
+        # Coleta as habilidades conhecidas/possíveis do oponente
+        opp_abilities = [str(opponent.ability).lower()] if opponent.ability else []
+        if opponent.possible_abilities:
+            opp_abilities.extend([str(a).lower() for a in opponent.possible_abilities])
+            
+        move_type = move.type.name if move.type else ""
+
+        # ==========================================
+        # 1. FILTRO DE IMUNIDADES POR HABILIDADE (Cura/Imunidade)
+        # ==========================================
+        if move.category.name != "STATUS" and move.base_power > 0:
+            if move_type == "WATER" and any(ab in opp_abilities for ab in ['waterabsorb', 'dryskin', 'stormdrain']): 
                 return True
-            if 'wonderguard' in opp_abilities and opponent.damage_multiplier(move) < 2:
-                if move.id != 'struggle': return True
-                
-        # Golpe Terrestre vs Air Balloon (Exceção: Thousand Arrows)
-        if move.type and move.type.name == 'GROUND' and move.id != 'thousandarrows':
-            if opponent.item and str(opponent.item).lower() == 'airballoon':
+            if move_type == "ELECTRIC" and any(ab in opp_abilities for ab in ['voltabsorb', 'motordrive', 'lightningrod']): 
+                return True
+            if move_type == "FIRE" and any(ab in opp_abilities for ab in ['flashfire', 'wellbakedbody']): 
+                return True
+            if move_type == "GRASS" and any(ab in opp_abilities for ab in ['sapsipper']): 
+                return True
+            if move_type == "GROUND" and any(ab in opp_abilities for ab in ['levitate', 'eartheater']): 
+                # Cuidado para não bloquear se a gente tiver Mold Breaker, mas para o Instinto base, bloqueio total é mais seguro.
                 return True
 
-        # --- 2. LIMPEZA DE HAZARDS ---
-        if move.id in ['defog', 'rapidspin', 'mortalspin', 'tidyup', 'courtchange']:
-            my_side = battle.side_conditions
-            opp_side = battle.opponent_side_conditions
+        # ==========================================
+        # 2. FILTRO DE MAGIC BOUNCE E GOOD AS GOLD
+        # ==========================================
+        if move.category.name == "STATUS" or move.base_power == 0:
+            # Identifica se o golpe tem o oponente ou o campo do oponente como alvo
+            # (Ignora golpes de self-setup como Swords Dance, Recover, Tailwind)
+            targets_opponent = str(move.target).lower() not in ['self', 'allyside', 'allyteam', 'adjacentally']
             
-            has_hazard = False
-            target_hazards = ['STEALTH_ROCK', 'SPIKES', 'TOXIC_SPIKES', 'STICKY_WEB']
-            target_screens = ['REFLECT', 'LIGHT_SCREEN', 'AURORA_VEIL']
-            
-            for cond in my_side:
-                if cond.name in target_hazards:
-                    has_hazard = True
-                    break
+            if targets_opponent:
+                # Magic Bounce: Reflete Hazards, Status, Taunt, etc. de volta para nós
+                if any(ab in opp_abilities for ab in ['magicbounce']):
+                    return True
                     
-            if not has_hazard and move.id in ['defog', 'courtchange']:
-                for cond in opp_side:
-                    if cond.name in target_screens or cond.name in target_hazards:
-                        has_hazard = True
-                        break
-                        
-            if not has_hazard:
-                return True
+                # BÔNUS: Good as Gold (Gholdengo) bloqueia todos os golpes de Status direcionados a ele
+                if any(ab in opp_abilities for ab in ['goodasgold']):
+                    return True
+                    
         # --- 3. PRIORIDADE, PRIMEIRO TURNO E FLINCH ---
         move_priority = 0
         try:
@@ -1930,17 +1944,23 @@ class InstinctCore:
             if switch: return switch
 
         # ==========================================================
-        # BLINDAGEM DE ESCOPO: BLOCO DE ATAQUE CORRIGIDO (V3 - COMPETITIVE MIND)
+        # BLINDAGEM DE ESCOPO: BLOCO DE ATAQUE
         # ==========================================================
-        if active and opponent:
-            if base_action in ["ATTACK_STRONG", "ATTACK_PREDICTIVE"]:
+        if base_action in ["ATTACK_STRONG", "ATTACK_PREDICTIVE", "ATTACK_PIVOT", "ATTACK_TECH"]:
+                # 1. Pega os ataques da categoria
                 valid_moves = [m for m in battle.available_moves if self.classify_move(m) in [MoveCategory.ATTACK_STRONG, MoveCategory.ATTACK_TECH, MoveCategory.ATTACK_PIVOT]]
-                valid_moves = [m for m in valid_moves if not self.is_move_useless(m, opponent, battle)]
                 
-                if not valid_moves: 
-                    valid_moves = [m for m in battle.available_moves if m.base_power > 0 and opponent.damage_multiplier(m) > 0]
-                    if not valid_moves: 
-                        valid_moves = [m for m in battle.available_moves if m.base_power > 0]
+                # 2. Filtra os inúteis (A barreira absoluta que adicionamos acima fará o trabalho aqui)
+                useful_moves = [m for m in valid_moves if not self.is_move_useless(m, opponent, battle)]
+                
+                if useful_moves:
+                    valid_moves = useful_moves
+                else:
+                    # OBEDIÊNCIA: Se não há golpes úteis, mas a máscara passou (ou o Epsilon falhou),
+                    # entregamos o golpe inútil para ele falhar e a Q-Table ser punida.
+                    valid_moves = [m for m in battle.available_moves if m.base_power > 0]
+                    if not valid_moves:
+                        valid_moves = battle.available_moves
                 
                 if valid_moves:
                     strong_move = None
@@ -1952,11 +1972,15 @@ class InstinctCore:
                     
                     for m in valid_moves:
                         score = self.estimate_damage_percent(m, active, opponent, battle)
-                        m_priority = getattr(m, 'priority', 0)
                         
                         # --- 1. MALÍCIA DE PRIORIDADE ---
+                        try:
+                            m_priority = m.priority
+                        except (KeyError, AttributeError):
+                            m_priority = 0
+                            
                         if m_priority > 0 and score >= opp_hp_frac:
-                            score += 5.0 
+                            score += 5.0
                             
                         # --- 2. INTELIGÊNCIA COMPLEXA DE RECUO (RECOIL) ---
                         has_recoil = m.id in ['bravebird', 'flareblitz', 'doubleedge', 'woodhammer', 'wildcharge']

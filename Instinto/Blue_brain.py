@@ -40,6 +40,33 @@ class BlueBrain:
         
         self.current_phase = "maxdamage"
 
+    def inspect_brain(self):
+        """Analisa a saúde e a convergência da Tabela Q."""
+        total_states = len(self.q_table)
+        if total_states == 0:
+            return 0, 0.0, 0.0
+
+        total_visits = 0
+        confident_states = 0
+        confidence_threshold = 3 
+
+        for state, actions in self.q_table.items():
+            # Conta as visitas da estrutura dinâmica da Tabela Q (array ou dict)
+            if isinstance(actions, dict):
+                state_visits = sum(action_data.get('visits', 0) for action_data in actions.values())
+            else:
+                # Se for lista do Q-Learning puro, puxamos do dicionário de visitas
+                state_visits = self.visit_counts.get(state, 1)
+                
+            total_visits += state_visits
+            if state_visits >= confidence_threshold:
+                confident_states += 1
+
+        avg_visits = total_visits / total_states
+        confidence_rate = (confident_states / total_states) * 100.0
+
+        return total_visits, avg_visits, confidence_rate
+
     def enter_phase(self, phase_name):
         phase_config = {
             # Fase 1: Aprendizado bruto (Alta exploração, Alta absorção)

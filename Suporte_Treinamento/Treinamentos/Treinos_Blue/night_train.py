@@ -1,6 +1,3 @@
-# Arquivo: night_train.py
-# Foco: Sincronização com o gerenciamento autônomo de fases do BlueBrain
-
 import subprocess
 import time
 import shutil
@@ -26,7 +23,7 @@ FROZEN_PATH = os.path.join(INSTINTO_DIR, "frozen_blue_brain.pkl")
 CIRCUIT = {
     "maxdamage": {
         "opponent": "maxdamage",
-        "target_wr": 0.70,       
+        "target_wr": 0.67,       
         "patience": 2,
         "max_sessions": 4,
         "n_battles": 10000,
@@ -36,7 +33,7 @@ CIRCUIT = {
         "opponent": "instinct",
         "target_wr": 0.65,       
         "patience": 3,
-        "max_sessions": 8,
+        "max_sessions": 12,
         "n_battles": 10000,
         "brain_suffix": "instinct"
     },
@@ -44,7 +41,7 @@ CIRCUIT = {
         "opponent": "selfplay_frozen",
         "target_wr": 0.53,       
         "patience": 4,
-        "max_sessions": 12,
+        "max_sessions": 14,
         "n_battles": 10000,
         "brain_suffix": "selfplay",
         "update_frozen_every": 3
