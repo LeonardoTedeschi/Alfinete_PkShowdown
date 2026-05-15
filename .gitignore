@@ -13,6 +13,12 @@
 *.tar.gz
 *.pdf
 
+# Outros arquivos grandes comuns (ajuste conforme necessário)
+*.mp4
+*.zip
+*.tar.gz
+*.pdf
+
 # Ambientes Virtuais
 venv/
 env/
