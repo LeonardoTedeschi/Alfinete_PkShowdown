@@ -29,7 +29,7 @@ __pycache__/
 
 # Modelos e Dados Pesados (Opcional, mas recomendado)
 # Descomente a linha abaixo se os arquivos .pkl (red_brain.pkl) mudarem a cada treino e forem muito pesados
-# *.pkl 
+*.pkl 
 
 # Logs e Históricos
 Instinto/historico_treinos/
