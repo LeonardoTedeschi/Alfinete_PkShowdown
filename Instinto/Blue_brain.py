@@ -6,11 +6,12 @@ import threading
 from collections import deque
 
 class BlueBrain:
-    def __init__(self, alpha=0.2, gamma=0.90, epsilon=0.40, min_epsilon=0.05, decay=0.005):
+    def __init__(self, alpha=0.2, gamma=0.95, epsilon=0.40, min_epsilon=0.05, decay=0.005):
         self.initial_alpha = alpha
         self.min_alpha = 0.005
         self.alpha = alpha
         self.gamma = gamma
+        self.initial_epsilon = epsilon 
         self.epsilon = epsilon
         self.min_epsilon = min_epsilon
         self.epsilon_decay = decay
@@ -81,6 +82,7 @@ class BlueBrain:
             cfg = phase_config[phase_name]
             
             # Reseta o Epsilon
+            self.initial_epsilon = cfg["epsilon_start"]
             self.epsilon = cfg["epsilon_start"]
             self.min_epsilon = cfg["epsilon_min"]
             self.epsilon_decay = cfg["decay"]
@@ -168,20 +170,17 @@ class BlueBrain:
 
         if prev_my_species and curr_my_species and prev_my_species != curr_my_species:
             if current_my_fainted == my_fainted_prev: 
-                # 1. Pedágio Fixo por qualquer troca voluntária
-                if base_action in ["SWITCH_DEFENSIVE", "SWITCH_OFFENSIVE"]:
-                    reward -= 5.0
                     
-                    # 2. Punição por trocas consecutivas (Fadiga/Loop)
-                    prev_action = history.get('prev_action')
-                    if prev_action in ["SWITCH_DEFENSIVE", "SWITCH_OFFENSIVE", "ATTACK_PIVOT"]:
-                        reward -= 10.0
+                # 2. Punição por trocas consecutivas (Fadiga/Loop)
+                prev_action = history.get('prev_action')
+                if prev_action in ["SWITCH_DEFENSIVE", "SWITCH_OFFENSIVE", "ATTACK_PIVOT"]:
+                    reward -= 8.0
                     
                 # 3. Punição por desperdício de status positivo (Buff) na troca
                 if last_state and len(last_state) >= 10:
                     my_last_boost_state = str(last_state[9]).upper()
                     if "BUFFED" in my_last_boost_state and "DEBUFF" not in my_last_boost_state:
-                        reward -= 15.0
+                        reward -= 10.0
 
         # --- 4. A GUILHOTINA TÁTICA (Punições por Redundância) ---
         opp = battle.opponent_active_pokemon
@@ -513,30 +512,28 @@ class BlueBrain:
         else:
             return (chosen_action_str, None)
 
-    def decay_epsilon(self, battle_count=None):
+    def decay_epsilon(self, new_states=0, battles_in_block=500):
         if not self.visit_counts:
             return
 
-        # 1. Pega os 5% dos estados mais visitados (O "Core" do metagame)
-        counts = list(self.visit_counts.values())
-        counts.sort(reverse=True)
-        top_5_percent_idx = max(1, int(len(counts) * 0.05))
-        top_counts = counts[:top_5_percent_idx]
+        # Taxa de descoberta: Quantos estados novos foram achados por batalha neste bloco
+        discovery_rate = new_states / max(1, battles_in_block)
 
-        avg_top_visits = sum(top_counts) / len(top_counts)
-
-        # 2. Multiplicador de Maturidade Orgânica (Varia de 0.5x a 1.5x)
-        # Se a média core for 10 visitas, o multiplicador é 1.0 (Queda exata no alvo).
-        maturity_multiplier = min(1.5, max(0.5, avg_top_visits / 10.0))
-
-        # 3. Subtração Real
-        actual_decay = self.epsilon_decay * maturity_multiplier
+        # 1. CURVA ADAPTATIVA DE EXPLORAÇÃO
+        decay_multiplier = 3.0 / max(discovery_rate, 0.1)
+        
+        # Limitamos a aceleração máxima a 3x a velocidade normal para que, mesmo no fim, não haja uma queda de penhasco.
+        decay_multiplier = min(3.0, decay_multiplier)
+        
+        # 2. CÁLCULO E APLICAÇÃO DO DECAIMENTO
+        actual_decay = self.epsilon_decay * decay_multiplier
         self.epsilon = max(self.min_epsilon, self.epsilon - actual_decay)
 
-        # 4. DECAIMENTO DO ALPHA
-        initial_eps = 0.40 
+        # 3. DECAIMENTO DO ALPHA (Taxa de Aprendizado)
+        initial_eps = getattr(self, 'initial_epsilon', 0.40)
+        
         if self.epsilon > self.min_epsilon:
-            progress = (self.epsilon - self.min_epsilon) / (initial_eps - self.min_epsilon)
+            progress = (self.epsilon - self.min_epsilon) / max(0.01, (initial_eps - self.min_epsilon))
         else:
             progress = 0.0
         

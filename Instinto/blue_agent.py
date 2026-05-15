@@ -99,7 +99,7 @@ class BLUE(Player):
         try:
             with open(self.paths['csv'], 'w', newline='') as f:
                 writer = csv.writer(f)
-                writer.writerow(["Batalhas", "WinRate_Bloco", "Epsilon", "Reward", "Ghost_Battles", "Visitas_Est", "Confianca"])
+                writer.writerow(["Batalhas", "WinRate_Bloco", "Estados_Q", "Epsilon", "Visitas_Est", "Confianca", "Reward", "Ghost_Battles"])
         except: pass
     
     def save_brain_silently(self):
@@ -471,64 +471,42 @@ async def main():
             await asyncio.sleep(1)
             bot.check_finished_battles()
             
-            # === BLOCO MATEMÁTICO CORRIGIDO ===
             completed = bot.total_completed_battles
             processed_this_block = completed - completed_before
 
             if processed_this_block > 0:
                 win_rate_bloco = (bot.block_wins / processed_this_block) * 100
                 
-                # 1. Extração de métricas de maturidade (Visitas e Confiança)
+                # --- LÓGICA DE NOVOS ESTADOS ---
+                current_q_size = len(bot.brain.q_table)
+                last_q_size = getattr(bot, 'last_q_size', current_q_size)
+                new_states_this_block = current_q_size - last_q_size
+                bot.last_q_size = current_q_size # Salva para o próximo bloco
+                
                 avg_visits = 0.0
                 conf_rate = 0.0
                 try:
-                    # Tenta obter o raio-x do cérebro
                     total_visits, avg_visits, conf_rate = bot.brain.inspect_brain()
-                    print(f"[Progresso] {completed} Batalhas | Win Rate (Bloco): {win_rate_bloco:.1f}% | "
-                          f"Estados: {len(bot.brain.q_table)} | Eps: {bot.brain.epsilon:.3f} | "
-                          f"Visitas/Est: {avg_visits:.2f} | Confiança: {conf_rate:.1f}%")
+                    print(f"[Progresso] {completed} Batalhas | Win Rate: {win_rate_bloco:.1f}% | Novos Est: {new_states_this_block} | Estados: {current_q_size} | Eps: {bot.brain.epsilon:.3f} | Visitas: {avg_visits:.2f} | Conf: {conf_rate:.1f}%")
                 except AttributeError:
-                    # Fallback caso a função ainda não tenha sido adicionada ao blue_brain.py
-                    print(f"[Progresso] {completed} Batalhas | Win Rate (Bloco): {win_rate_bloco:.1f}% | "
-                          f"Estados: {len(bot.brain.q_table)} | Eps: {bot.brain.epsilon:.3f}")
+                    print(f"[Progresso] {completed} Batalhas | Win Rate: {win_rate_bloco:.1f}% | Novos Est: {new_states_this_block} | Estados: {current_q_size} | Eps: {bot.brain.epsilon:.3f}")
                 
+                # --- ATUALIZAÇÃO INTELIGENTE DO EPSILON ---
                 if hasattr(bot.brain, 'decay_epsilon'):
-                    bot.brain.decay_epsilon()
+                    bot.brain.decay_epsilon(new_states=new_states_this_block, battles_in_block=processed_this_block)
                     
-                # 2. Registro no CSV com os novos dados
                 try:
                     with open(bot.paths['csv'], 'a', newline='') as f:
                         writer = csv.writer(f)
                         writer.writerow([
-                            completed, 
-                            f"{win_rate_bloco:.1f}", 
-                            f"{bot.brain.epsilon:.3f}", 
-                            f"{bot.total_reward_sum:.0f}", 
-                            bot.aborted_battles,
-                            f"{avg_visits:.2f}",
-                            f"{conf_rate:.1f}"
+                            completed, f"{win_rate_bloco:.1f}", f"{bot.brain.epsilon:.3f}", 
+                            f"{bot.total_reward_sum:.0f}", bot.aborted_battles,
+                            f"{avg_visits:.2f}", f"{conf_rate:.1f}", current_q_size
                         ])
                 except: pass
                 
                 bot.block_wins = 0
                 bot.save_brain_silently()
-                
-                # 3. Execução paralela do inspect_brain.py com o caminho corrigido
-                try:
-                    import subprocess
-                    script_path = r"C:\Projetos Robotica Computacional\Projeto Showdown IA Pokemon\Bot-QV-Pokemon\Suporte_Treinamento\Suporte\inspect_brain.py"
-                    
-                    if os.path.exists(script_path):
-                        # Define o diretório de trabalho para que o script encontre seus próprios logs
-                        script_dir = os.path.dirname(script_path)
-                        subprocess.Popen(
-                            [sys.executable, script_path], 
-                            stdout=subprocess.DEVNULL, 
-                            stderr=subprocess.DEVNULL,
-                            cwd=script_dir
-                        )
-                except Exception:
-                    pass # Garante que falhas no gráfico não interrompam o treino
                         
     except KeyboardInterrupt:
         print("\n\n[!] Interrompido pelo usuário. Salvando...")
@@ -562,6 +540,22 @@ async def main():
             )
         except: pass
         
+        try:
+            import subprocess
+            script_path = r"C:\Projetos Robotica Computacional\Projeto Showdown IA Pokemon\Bot-QV-Pokemon\Suporte_Treinamento\Suporte\inspect_brain.py"
+                    
+            if os.path.exists(script_path):
+                # Define o diretório de trabalho para que o script encontre seus próprios logs
+                script_dir = os.path.dirname(script_path)
+                subprocess.Popen(
+                    [sys.executable, script_path], 
+                    stdout=subprocess.DEVNULL, 
+                    stderr=subprocess.DEVNULL,
+                    cwd=script_dir
+                    )
+        except Exception:
+            pass # Garante que falhas no gráfico não interrompam o treino
+
         session_summary = {
             "phase": args.phase,
             "opponent": args.opponent,

@@ -1,0 +1,11 @@
+{
+  "phase": "instinct",
+  "opponent": "instinct",
+  "n_battles": 10000,
+  "session_number": 20,
+  "brain_filename": "blue_brain.pkl",
+  "frozen_brain": null,
+  "target_wr": 0.65,
+  "patience": 3,
+  "block_size": 500
+}
