@@ -366,7 +366,6 @@ class InstinctCore:
             self.get_hazard_state(battle.opponent_side_conditions),
             self.get_mechanic_state(battle), # Índice 13
             self.get_macro_context(battle),  # Índice 14
-            is_first_turn                    # Índice 15
         )
 
     # =========================================================================
@@ -812,6 +811,35 @@ class InstinctCore:
             if move.id == 'sunnyday' and current_weather in ['SUNNYDAY', 'DESOLATELAND']: return True
             if move.id == 'sandstorm' and current_weather == 'SANDSTORM': return True
             if move.id in ['hail', 'snowscape'] and current_weather in ['HAIL', 'SNOW', 'SNOWSCAPE']: return True
+
+        # =====================================================================
+        # 6.5. LIMPEZA DE HAZARDS DESNECESSÁRIA (DEFOG / RAPID SPIN)
+        # =====================================================================
+        if move.id in ['defog', 'rapidspin', 'mortalspin', 'courtchange']:
+            my_side = [str(k).upper() for k in battle.side_conditions.keys()]
+            opp_side = [str(k).upper() for k in battle.opponent_side_conditions.keys()]
+            hazards_list = ['STEALTH_ROCK', 'SPIKES', 'TOXIC_SPIKES', 'STICKY_WEB']
+            
+            my_hazards = any(h in cond for cond in my_side for h in hazards_list)
+            
+            if move.id in ['rapidspin', 'mortalspin']:
+                # Só é útil se tivermos Hazards do nosso lado OU se estivermos presos por Leech Seed/Bind
+                is_trapped = active.effects and any(e in str(active.effects).lower() for e in ['leechseed', 'bind', 'wrap', 'firespin', 'magmastorm'])
+                if not my_hazards and not is_trapped:
+                    return True
+                    
+            elif move.id == 'defog':
+                # Defog limpa ambos os lados. Se não temos hazards nos punindo E o oponente não tem barreiras (Screens),
+                # usar Defog é inútil. Se o oponente tem Hazards que NÓS colocamos, usar Defog é auto-sabotagem.
+                opp_screens = any(s in cond for cond in opp_side for s in ['REFLECT', 'LIGHT_SCREEN', 'AURORA_VEIL', 'SAFEGUARD'])
+                if not my_hazards and not opp_screens:
+                    return True
+                    
+            elif move.id == 'courtchange':
+                # Court Change inverte as condições do campo. Só usamos se nós tivermos hazards 
+                # (para jogar pro inimigo) ou se ele tiver Telas/Tailwind (para roubarmos).
+                if not my_hazards and not opp_side:
+                    return True
 
         # --- 7. PREVENÇÃO DE PROTECT CONSECUTIVO ---
         if move.id in ['protect', 'detect', 'spikyshield', 'kingsshield', 'banefulbunker', 'burningbulwark', 'silktrap', 'obstruct', 'endure']:

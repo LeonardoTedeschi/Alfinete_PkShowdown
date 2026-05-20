@@ -1,7 +1,7 @@
 {
-  "current_phase_idx": 1,
-  "phase_sessions": 14,
+  "current_phase_idx": 2,
+  "phase_sessions": 2,
   "stable_sessions": 0,
-  "total_sessions": 19,
-  "frozen_created": false
+  "total_sessions": 28,
+  "frozen_created": true
 }

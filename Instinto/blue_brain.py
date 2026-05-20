@@ -96,240 +96,106 @@ class BlueBrain:
             self.memory.clear() 
             print(f"[CÉREBRO] Entrando na Fase: {phase_name.upper()} | Eps: {self.epsilon:.2f} -> {self.min_epsilon:.2f} | Alpha: {self.alpha:.3f}")
 
+    def _calculate_potential(self, battle, state):
+        """
+        Calcula o Potencial Total (Phi) de um estado dado.
+        Teoria: Phi = Phi_Guerra (Macro) + Phi_Batalha (Micro)
+        """
+        if not state or len(state) < 15: return 0.0
+        
+        phi_guerra = 0.0
+        phi_batalha = 0.0
+        
+        # --- PILAR A: CONTEXTO E MATCHUP ---
+        matchup_vals = {
+            "DOMINANT": 40.0, "OFFENSIVE_ADV": 20.0, "DEFENSIVE_ADV": 10.0,
+            "NEUTRAL": 0.0, "VOLATILE": -5.0, "STALEMATE": 0.0,
+            "OFFENSIVE_DIS": -10.0, "DEFENSIVE_DIS": -20.0, "CRITICAL_DIS": -40.0
+        }
+        matchup = str(state[2]).upper()
+        phi_batalha += matchup_vals.get(matchup, 0.0)
+        
+        macro_context = str(state[14]).upper()
+        context_vals = {"DOMINATING": 30.0, "RECOVERING": -30.0}
+        phi_guerra += context_vals.get(macro_context, 0.0)
+
+        # --- PILAR B: VANTAGEM MATERIAL (HP GLOBAL) ---
+        my_total_hp = sum(m.current_hp_fraction for m in battle.team.values())
+        opp_total_hp = sum(m.current_hp_fraction for m in battle.opponent_team.values())
+        # A diferença de HP (Guerra) multiplicada por um peso de escala
+        phi_guerra += (my_total_hp - opp_total_hp) * 40.0 
+
+        # --- PILAR C: CONTROLE DE CAMPO (HAZARDS E CLIMA) ---
+        # Nosso Campo (Hazards são ruins para nós)
+        if state[11] == "SET": phi_guerra -= 10.0
+        # Campo Inimigo (Hazards são bons para nós)
+        if state[12] == "SET": phi_guerra += 10.0
+        
+        weather_state = str(state[5]).upper()
+        field_vals = {"FIELD_SWEEP": 20.0, "FIELD_POWER": 15.0, "FIELD_SPEED": 15.0, 
+                      "FIELD_DEFENSE": 10.0, "FIELD_HOSTILE": -20.0}
+        phi_guerra += field_vals.get(weather_state, 0.0)
+
+        # --- INTEGRAÇÃO DE ROLES E SPEED (INICIATIVA) ---
+        my_role = str(state[0]).upper()
+        speed_tier = str(state[6]).upper()
+        
+        if speed_tier == "FASTER":
+            phi_batalha += 20.0 if my_role == "SWEEPER" else 5.0
+        else: # SLOWER
+            phi_batalha -= 20.0 if my_role == "SWEEPER" else 0.0
+
+        # --- BOOSTS, STATUS E MECÂNICAS ---
+        my_boost = str(state[9]).upper()
+        opp_boost = str(state[10]).upper()
+        my_status = str(state[7]).upper()
+        opp_status = str(state[8]).upper()
+        mec_state = str(state[13]).upper()
+
+        if "BUFFED" in my_boost: phi_batalha += 10.0
+        if "DEBUFF" in my_boost: phi_batalha -= 10.0
+        if my_status == "AFFLICTED": phi_batalha -= 15.0
+        if opp_status == "AFFLICTED": phi_batalha += 15.0
+        if "BUFFED" in opp_boost: phi_batalha -= 10.0
+        if "DEBUFF" in opp_boost: phi_batalha += 10.0
+        
+        # Mecânica como recurso de pressão (Poder Guardado)
+        if mec_state == "MEC_AVAIL": phi_batalha += 10.0
+
+        return phi_guerra + phi_batalha
+
 
     def calculate_reward(self, battle, history, current_state=None):
         reward = 0.0
 
-        # --- 1. RECOMPENSAS MACRO (ABATES, MORTES E SACRIFÍCIOS) ---
+        # 1. RECOMPENSAS EXTERNAS (REALIDADE DO AMBIENTE)
+        if battle.won: reward += 1500.0
+        elif battle.lost: reward -= 1500.0
+
         current_my_fainted = len([m for m in battle.team.values() if m.fainted])
         current_opp_fainted = len([m for m in battle.opponent_team.values() if m.fainted])
-        
         my_fainted_prev = history.get('my_fainted', 0)
         opp_fainted_prev = history.get('opp_fainted', 0)
+
+        if current_my_fainted > my_fainted_prev: reward -= 100.0
+        if current_opp_fainted > opp_fainted_prev: reward += 100.0
+
+        # 2. POTENTIAL-BASED REWARD SHAPING (PBRS)
+        # Calculamos a nota do estado atual
+        phi_current = self._calculate_potential(battle, current_state)
         
-        # Recupera a memória de 2 turnos atrás
-        my_fainted_prev_prev = history.get('my_fainted_prev_turn', 0)
+        # Recuperamos a nota do estado anterior (salva pelo Agente no histórico)
+        # Se for o primeiro turno, o potencial anterior é igual ao atual para dar 0
+        phi_prev = history.get('last_phi', phi_current)
         
-        # A. Punição normal por morte
-        if current_my_fainted > my_fainted_prev: 
-            reward -= 100.0
-
-        # B. Recompensa por Abate e A Arte do Sacrifício
-        if current_opp_fainted > opp_fainted_prev: 
-            reward += 100.0 
-            
-            # C. BÔNUS DE REVENGE KILL ("Boi de Piranha")
-            if my_fainted_prev > my_fainted_prev_prev:
-                reward += 50.0 # Bônus brutal compensa o sacrifício e ensina o bot a preparar o terreno
-                
-            # D. BÔNUS DE KAMIKAZE (Double KO estratégico)
-            elif current_my_fainted > my_fainted_prev:
-                reward += 30.0 # Recompensa por se sacrificar para levar uma ameaça junto
-
-        # --- 2. MICRO-RECOMPENSAS (SOMA GLOBAL DE HP) ---
+        # A Equação de Bellman para Shaping: F = (gamma * Phi_t+1) - Phi_t
+        shaping_reward = (self.gamma * phi_current) - phi_prev
         
-        # 2A. Delta da Nossa Equipe (Dano Sofrido)
-        team_hp_history = history.get('team_hp', {})
-        my_current_team_hp = sum(m.current_hp_fraction for m in battle.team.values())
-        my_prev_team_hp = sum(team_hp_history.values()) if team_hp_history else my_current_team_hp
-        my_team_delta = my_current_team_hp - my_prev_team_hp
+        # 3. INTEGRAÇÃO FINAL
+        reward += shaping_reward
         
-        if current_my_fainted == my_fainted_prev:
-            if my_team_delta < 0:
-                reward -= 3.0 * abs(my_team_delta)
-
-        # 2B. Delta da Equipe Adversária (Dano Causado)
-        opp_team_hp_history = history.get('opp_team_hp', {})
-        opp_current_team_hp = sum(m.current_hp_fraction for m in battle.opponent_team.values())
-        opp_prev_team_hp = sum(opp_team_hp_history.values()) if opp_team_hp_history else opp_current_team_hp
-        opp_team_delta = opp_current_team_hp - opp_prev_team_hp
-
-        if current_opp_fainted == opp_fainted_prev:
-            if opp_team_delta < 0: 
-                reward += 5.0 * abs(opp_team_delta) 
-
-        # Recupera a ação e o estado anterior para as análises abaixo
-        last_action_tuple = history.get('last_action')
-        base_action = last_action_tuple[0] if last_action_tuple else None
-        last_state = history.get('state', [])
-
-        # Recupera a ação e o estado anterior para as análises abaixo
-        last_action_tuple = history.get('last_action')
-        base_action = last_action_tuple[0] if last_action_tuple else None
-        last_state = history.get('state', [])
-
-        # --- CORREÇÃO: EXTRAINDO O MACRO CONTEXT DO ESTADO ---
-        macro_context = "BRAWL" # Valor padrão de segurança
-        if last_state and len(last_state) >= 15:
-            macro_context = last_state[14]
-
-       # --- 3. PEDÁGIO DE TROCA E DESPERDÍCIO ---
-        active = battle.active_pokemon
-        curr_my_species = active.species if active else None
-        prev_my_species = history.get('my_species')
-
-        if prev_my_species and curr_my_species and prev_my_species != curr_my_species:
-            if current_my_fainted == my_fainted_prev: 
-                    
-                # 2. Punição por trocas consecutivas (Fadiga/Loop)
-                prev_action = history.get('prev_action')
-                if prev_action in ["SWITCH_DEFENSIVE", "SWITCH_OFFENSIVE", "ATTACK_PIVOT"]:
-                    reward -= 8.0
-                    
-                # 3. Punição por desperdício de status positivo (Buff) na troca
-                if last_state and len(last_state) >= 10:
-                    my_last_boost_state = str(last_state[9]).upper()
-                    if "BUFFED" in my_last_boost_state and "DEBUFF" not in my_last_boost_state:
-                        reward -= 10.0
-
-        # --- 4. A GUILHOTINA TÁTICA (Punições por Redundância) ---
-        opp = battle.opponent_active_pokemon
-        
-        if base_action == "HAZARD":
-            # Puxa o estado atual dos Hazards no campo do oponente
-            opp_conds = [str(k).upper() for k in battle.opponent_side_conditions.keys()]
-            already_set = any(h in opp_conds for h in ['STEALTH_ROCK', 'SPIKES', 'TOXIC_SPIKES', 'STICKY_WEB'])
-            
-            if already_set:
-                reward -= 10.0
-            else:
-                if macro_context == "OPENING": reward += 5.0
-                elif macro_context == "BRAWL": reward += 2.0
-
-        elif base_action == "STATUS":
-            # Se o oponente atual JÁ ESTÁ com status e tentamos aplicar novamente
-            curr_opp_status = "AFFLICTED" if opp and opp.status else "CLEAN"
-            prev_opp_status = history.get('opp_status', "CLEAN")
-            
-            if prev_opp_status == "AFFLICTED":
-                reward -= 10.0 # Reduzido: Ação de status redundante
-            elif curr_opp_status == "AFFLICTED":
-                if macro_context == "OPENING": reward += 5.0
-                elif macro_context == "BRAWL": reward += 3.0
-                else: reward += 1.0
-
-        # --- 5. RECOMPENSAS TEMPORAIS E DE MACRO-ESTRATÉGIA ---
-        elif base_action == "CLEAN_HAZARD":
-            if macro_context in ["OPENING", "BRAWL"]: reward += 4.0
-            else: reward += 1.0
-
-        elif base_action == "PHAZE":
-            if macro_context in ["OPENING", "BRAWL", "RECOVERING"]: reward += 3.0
-            elif macro_context in ["CLUTCH", "DOMINATING"]: reward -= 5.0 
-
-        elif base_action == "BUFF":
-            if macro_context in ["CLUTCH", "DOMINATING", "RECOVERING"]: 
-                reward += 5.0 
-                
-        elif base_action == "DISRUPTION":
-            prev_action = history.get('prev_action', "")
-            str_prev = str(prev_action[0]) if isinstance(prev_action, tuple) else str(prev_action)
-            
-            if "DISRUPTION" in str_prev:
-                reward -= 15.0 # Punição severa: Desperdiçou o turno tentando renovar algo que já está ativo
-            else:
-                # Bônus Originais de Execução Perfeita
-                opp_role = str(last_state[1]) if len(last_state) >= 2 else ""
-                if opp_role == "TANK":
-                    reward += 10.0 # Destruiu a função da Wall inimiga!
-                if macro_context == "OPENING":
-                    reward += 6.0  # Excelente para impedir Hazards e Setups iniciais
-                
-        elif base_action == "DEBUFF":
-            # Screech, Charm, etc.
-            reward += 2.0 # Recompensa base pequena por reduzir status
-                
-        elif base_action == "FIELD_CONTROL":
-            # A IA SÓ PODE SER JULGADA PELO QUE ELA ENXERGA (last_state vs current_state)
-            prev_field = str(last_state[5]).upper() if last_state and len(last_state) >= 6 else "NORMAL"
-            
-            # Pega a nova abstração de campo (Se o bot morreu no turno, assume NORMAL)
-            curr_field = "NORMAL"
-            if current_state and len(current_state) >= 6:
-                curr_field = str(current_state[5]).upper()
-                
-            positive_fields = ["FIELD_POWER", "FIELD_SPEED", "FIELD_DEFENSE", "FIELD_SWEEP"]
-            
-            # O Julgamento Matemático Purista
-            if curr_field in positive_fields:
-                if prev_field == "FIELD_HOSTILE":
-                    reward += 15.0 # Mestre: Reverteu o clima inimigo e ganhou vantagem tática
-                else:
-                    reward += 10.0 # Ótimo: Criou vantagem do zero
-                    
-            elif curr_field == "FIELD_NEUTRAL":
-                if prev_field == "FIELD_HOSTILE":
-                    reward += 5.0  # Tático de Defesa: Limpou o clima hostil, mesmo que não ganhe bônus direto
-                else:
-                    reward -= 2.0  # Ruído: Alterou o campo, mas o próprio Cérebro não sabe como usar isso
-                    
-            elif curr_field == "FIELD_HOSTILE":
-                reward -= 10.0     # Suicídio Tático: O Cérebro usou um golpe que piorou a própria situação!
-                
-            else:
-                reward -= 8.0      # Falha: O oponente impediu (Taunt), errou, ou sobrescreveu no mesmo turno
-
-        elif base_action == "PROTECT":
-            prev_action = history.get('prev_action', "")
-            str_prev = str(prev_action[0]) if isinstance(prev_action, tuple) else str(prev_action)
-            
-            if "PROTECT" in str_prev:
-                reward -= 15.0 
-            else:
-                # Recompensa moderada por usar o Protect de forma inteligente (Scout)
-                reward += 3.0
-                
-        elif base_action == "HEAL_STATUS":
-            # Punição por desperdiçar turno se o time não estiver curado
-            reward += 8.0 # Recompensa padrão por curar o time
-                
-        elif base_action in ["HEAL"]:
-            # NOVA PUNIÇÃO: Cura desnecessária (Overheal) com a vida no bucket FULL
-            if base_action == "HEAL" and history.get('my_hp_bucket') == "FULL":
-                reward -= 3.0
-            else:
-                if macro_context in ["BRAWL", "RECOVERING", "CLUTCH"]: reward += 1.5
-                else: reward += 0.5
-
-        had_lethal = history.get('has_lethal', False)
-        if had_lethal and base_action not in ["ATTACK_STRONG", "ATTACK_PREDICTIVE", "ATTACK_TECH", "ATTACK_PIVOT"]:
-            reward -= 30.0
-
-        elif base_action == "STAT_CLEAN":
-            my_boost = str(last_state[9]).upper() if len(last_state) >= 10 else "NEUTRAL"
-            opp_boost = str(last_state[10]).upper() if len(last_state) >= 11 else "NEUTRAL"
-            
-            if "DEBUFF" not in my_boost and "BUFFED" not in opp_boost:
-                reward -= 8.0 # Punição: Usou Haze num cenário neutro
-            else:
-                reward += 5.0  # Genial: Limpou um Sweeper inimigo ou curou nossos drops
-
-        # --- 5.5 RECOMPENSA DE MOMENTUM ---
-        prev_action = history.get('prev_action')
-        if prev_action in ["SWITCH_DEFENSIVE", "SWITCH_OFFENSIVE", "ATTACK_PIVOT"]:
-            if base_action in ["ATTACK_STRONG", "ATTACK_PREDICTIVE", "ATTACK_TECH", "ATTACK_PIVOT", "STATUS", "HAZARD", "BUFF"]:
-                reward += 8.0
-            elif base_action in ["SWITCH_DEFENSIVE", "SWITCH_OFFENSIVE"]:
-                reward -= 10.0 
-
-        # --- 5.6 SINERGIA DE CAMPO (Aproveitando a Vantagem) ---
-        if last_state and len(last_state) >= 6:
-            field_context = str(last_state[5]).upper()
-            
-            if field_context == "FIELD_POWER" and base_action in ["ATTACK_STRONG", "ATTACK_PREDICTIVE"]:
-                reward += 4.0 # Sinergia: Usou o bônus matemático de dano para esmagar o oponente
-                
-            elif field_context == "FIELD_SPEED" and base_action not in ["SWITCH_DEFENSIVE", "PROTECT"]:
-                reward += 3.0 # Sinergia: Usou a vantagem de turno garantido para agir ativamente
-                
-            elif field_context == "FIELD_DEFENSE" and base_action in ["BUFF", "HAZARD", "HEAL", "STATUS"]:
-                reward += 4.0 # Sinergia: Usou a Evasão/Cura do campo para fazer setup com segurança absoluta
-
-        # --- 6. O XEQUE-MATE ---
-        if battle.won: 
-            reward += 1500.0
-        elif battle.lost: 
-            reward -= 1500.0
+        # Salva o potencial atual para o próximo turno no histórico
+        history['last_phi'] = phi_current
 
         return reward
 
@@ -389,26 +255,48 @@ class BlueBrain:
             new_val = (1 - effective_alpha) * old_val + effective_alpha * (reward + self.gamma * next_max)
             self.q_table[abs_state][action_idx] = new_val
 
+    # =====================================================================
+    # PRIORITIZED EXPERIENCE REPLAY (PER) - Motor de Sonho Inteligente
+    # =====================================================================        
     def replay_experience(self):
+
+        # --- A RECEITA DO SONHO (Batch de 128 memórias) ---
+        # 40% do sonho foca nos momentos decisivos do jogo
+        # 40% do sonho foca em preencher os "buracos" da Tabela Q (Estados 1 Visita)
+        # 20% do sonho é fluxo normal para não esquecer o básico
         if len(self.memory) < self.batch_size:
             return 
         
         memory_list = list(self.memory)
         
-        # --- VIÉS DE RECÊNCIA (RECENT-BIASED SAMPLING) ---
-        recent_cutoff = int(len(memory_list) * 0.66)
-        recent_pool = memory_list[recent_cutoff:]
-        old_pool = memory_list[:recent_cutoff]
+        # BALDE 1: Memórias de Alto Impacto (Choque Tático)
+        # Filtra jogadas que geraram grande variação de pontos (Vitórias, Derrotas ou trocas brutais do PBRS)
+        high_impact = [m for m in memory_list if abs(m[2]) > 80.0]
         
-        recent_batch_size = int(self.batch_size * 0.75)
-        old_batch_size = self.batch_size - recent_batch_size
+        # BALDE 2: Estados Raros (Combate à Cauda Longa)
+        # Força o cérebro a sonhar com estados que ele visitou menos de 3 vezes na vida real
+        rare_states = []
+        for m in memory_list:
+            abs_state = self._get_abstract_state(m[0])
+            if self.visit_counts.get(abs_state, 0) < 3:
+                rare_states.append(m)
+                
+        # BALDE 3: Memórias Comuns (Manutenção e Generalização)
+        common = memory_list
         
-        if len(recent_pool) >= recent_batch_size and len(old_pool) >= old_batch_size:
-            minibatch = random.sample(recent_pool, recent_batch_size) + random.sample(old_pool, old_batch_size)
-        else:
-            minibatch = random.sample(memory_list, self.batch_size)
+        batch = []
+        
+        n_high = min(int(self.batch_size * 0.40), len(high_impact))
+        if n_high > 0: batch.extend(random.sample(high_impact, n_high))
+        
+        n_rare = min(int(self.batch_size * 0.40), len(rare_states))
+        if n_rare > 0: batch.extend(random.sample(rare_states, n_rare))
+        
+        n_common = self.batch_size - len(batch)
+        if n_common > 0: batch.extend(random.sample(common, n_common))
             
-        for state, action_str, reward, next_state in minibatch:
+        # Executa o aprendizado noturno
+        for state, action_str, reward, next_state in batch:
             self._apply_q_update(state, action_str, reward, next_state, is_replay=True)
 
     def _add_action_indices(self, intent, target_list, valid_indices, is_mec_avail):

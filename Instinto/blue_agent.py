@@ -99,7 +99,16 @@ class BLUE(Player):
         try:
             with open(self.paths['csv'], 'w', newline='') as f:
                 writer = csv.writer(f)
-                writer.writerow(["Batalhas", "WinRate_Bloco", "Estados_Q", "Epsilon", "Visitas_Est", "Confianca", "Reward", "Ghost_Battles"])
+                writer.writerow([
+                    "Batalhas", 
+                    "WinRate_Bloco", 
+                    "Estados_Q", 
+                    "Epsilon", 
+                    "Visitas_Est", 
+                    "Confianca", 
+                    "Reward", 
+                    "Ghost_Battles"
+                ])
         except: pass
     
     def save_brain_silently(self):
@@ -165,7 +174,7 @@ class BLUE(Player):
             current_state = self.core.get_state(battle)
             
             if history and not battle.finished and not history.get('reward_processed', False):
-                reward = self.brain.calculate_reward(battle, history)
+                reward = self.brain.calculate_reward(battle, history, current_state)
                 self.total_reward_sum += reward
                 last_state = history.get('state')
                 last_action_tuple = history.get('last_action')
@@ -384,8 +393,9 @@ async def main():
         
     bot.brain.filename = args.brain 
     
-    # --- CORREÇÃO DA AMNÉSIA: O CÉREBRO CARREGA DO DISCO AQUI ---
     bot.brain.load_model(args.brain)
+
+    bot.last_q_size = len(bot.brain.q_table)
 
     if args.opponent == "maxdamage":
         rival = MaxDamagePlayer(
@@ -476,21 +486,22 @@ async def main():
 
             if processed_this_block > 0:
                 win_rate_bloco = (bot.block_wins / processed_this_block) * 100
-                
-                # --- LÓGICA DE NOVOS ESTADOS ---
+            
                 current_q_size = len(bot.brain.q_table)
-                last_q_size = getattr(bot, 'last_q_size', current_q_size)
+                # Pega a base salva no início (ou no bloco anterior)
+                last_q_size = bot.last_q_size 
                 new_states_this_block = current_q_size - last_q_size
-                bot.last_q_size = current_q_size # Salva para o próximo bloco
+                
+                # Salva o tamanho atual para ser a base do próximo bloco de 500
+                bot.last_q_size = current_q_size
                 
                 avg_visits = 0.0
                 conf_rate = 0.0
                 try:
                     total_visits, avg_visits, conf_rate = bot.brain.inspect_brain()
-                    print(f"[Progresso] {completed} Batalhas | Win Rate: {win_rate_bloco:.1f}% | Novos Est: {new_states_this_block} | Estados: {current_q_size} | Eps: {bot.brain.epsilon:.3f} | Visitas: {avg_visits:.2f} | Conf: {conf_rate:.1f}%")
+                    print(f"[Progresso] {completed} Batalhas | Win Rate: {win_rate_bloco:.1f}% | Reward: {bot.total_reward_sum:.0f} | Novos Est: {new_states_this_block} | Estados: {current_q_size} | Eps: {bot.brain.epsilon:.3f} | Visitas: {avg_visits:.2f} | Conf: {conf_rate:.1f}%")
                 except AttributeError:
-                    print(f"[Progresso] {completed} Batalhas | Win Rate: {win_rate_bloco:.1f}% | Novos Est: {new_states_this_block} | Estados: {current_q_size} | Eps: {bot.brain.epsilon:.3f}")
-                
+                    print(f"[Progresso] {completed} Batalhas | Win Rate: {win_rate_bloco:.1f}% | Reward: {bot.total_reward_sum:.0f} | Novos Est: {new_states_this_block} | Estados: {current_q_size} | Eps: {bot.brain.epsilon:.3f}")
                 # --- ATUALIZAÇÃO INTELIGENTE DO EPSILON ---
                 if hasattr(bot.brain, 'decay_epsilon'):
                     bot.brain.decay_epsilon(new_states=new_states_this_block, battles_in_block=processed_this_block)

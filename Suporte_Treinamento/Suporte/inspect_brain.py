@@ -22,8 +22,9 @@ if not os.path.exists(LOG_DIR):
 BASE_ACTIONS = [
     "ATTACK_STRONG", "ATTACK_PREDICTIVE", "ATTACK_PIVOT", "ATTACK_TECH", 
     "BUFF", "STATUS", "HEAL", "CLEAN_HAZARD", 
-    "PROTECT", "DEBUFF", "STAT_CLEAN", "HEAL_STATUS", "PHAZE", 
-    "FIELD_CONTROL", "HAZARD", "SWITCH_DEFENSIVE", "SWITCH_OFFENSIVE"
+    "PROTECT", "DEBUFF", "DISRUPTION", "STAT_CLEAN", "HEAL_STATUS", "PHAZE",
+    "FIELD_CONTROL", "HAZARD", "SWITCH_DEFENSIVE", "SWITCH_OFFENSIVE",
+    "BARRIER"
 ]
 
 BLUE_ACTIONS = []
@@ -41,7 +42,7 @@ def decode_state_blue_exact(state_tuple):
             else:
                 yield t
         s = list(flatten(state_tuple))
-        while len(s) < 15: s.append("?") # Atualizado para 15 dimensões
+        while len(s) < 15: s.append("?") # Atualizado para 16 dimensões exatas do InstinctCore
             
         my_role = str(s[0]).replace('SPEED_SWEEPER', 'SWEEPER').replace('TANK_BULK', 'TANK')
         opp_role = str(s[1]).replace('SPEED_SWEEPER', 'SWEEPER').replace('TANK_BULK', 'TANK')
@@ -49,8 +50,8 @@ def decode_state_blue_exact(state_tuple):
         
         return [
             f"{my_role} v {opp_role}", matchup, f"{s[3]} v {s[4]}", 
-            str(s[6]), f"{s[7]} v {s[8]}", f"{s[9]} v {s[10]}", 
-            f"{s[11]} v {s[12]}", str(s[5]), str(s[13]), str(s[14]) # Adicionada a posição s[14]
+            str(s[5]), str(s[6]), f"{s[7]} v {s[8]}", f"{s[9]} v {s[10]}", 
+            f"{s[11]} v {s[12]}", str(s[13]), str(s[14])
         ]
     except Exception as e:
         return [f"ERR"] * 10
@@ -104,7 +105,7 @@ def generate_dashboard(df, action_counts, visit_stats, filename):
     
     table_data = df.values.tolist()
     col_labels = df.columns.tolist()
-    col_widths = [0.04, 0.05, 0.10, 0.11, 0.07, 0.08, 0.06, 0.09, 0.09, 0.07, 0.06, 0.08, 0.08]
+    col_widths = [0.05, 0.06, 0.10, 0.11, 0.08, 0.08, 0.07, 0.09, 0.09, 0.08, 0.08, 0.06, 0.06]
     
     the_table = ax2.table(cellText=table_data, colLabels=col_labels, loc='center', cellLoc='center', colWidths=col_widths, bbox=[0, 0, 1, 1])
     the_table.auto_set_font_size(False)
@@ -201,13 +202,13 @@ def analyze_brain():
                 "Roles": state_cols[0],
                 "Matchup": state_cols[1],
                 "HP": state_cols[2],
-                "Speed": state_cols[3],
-                "Status": state_cols[4],
-                "Boosts": state_cols[5],
-                "Hazards": state_cols[6],
-                "Clima": state_cols[7],
+                "Clima": state_cols[3],    # Antes estava perdido, agora está no índice 5 real
+                "Speed": state_cols[4],
+                "Status": state_cols[5],
+                "Boosts": state_cols[6],
+                "Hazards": state_cols[7],
                 "Mecânica": state_cols[8],
-                "Contexto": state_cols[9] 
+                "Contexto": state_cols[9],
             })
             
         df_top20 = pd.DataFrame(export_data)
