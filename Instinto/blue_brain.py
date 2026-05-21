@@ -21,7 +21,7 @@ class BlueBrain:
         self._qtable_lock = threading.Lock()
 
         self.memory = deque(maxlen=10000) 
-        self.batch_size = 128
+        self.batch_size = 512
         
         # --- ESTRUTURA DE AÇÕES ATUALIZADA (V7) ---
         self.base_actions = [
@@ -259,43 +259,74 @@ class BlueBrain:
     # PRIORITIZED EXPERIENCE REPLAY (PER) - Motor de Sonho Inteligente
     # =====================================================================        
     def replay_experience(self):
-
-        # --- A RECEITA DO SONHO (Batch de 128 memórias) ---
-        # 40% do sonho foca nos momentos decisivos do jogo
-        # 40% do sonho foca em preencher os "buracos" da Tabela Q (Estados 1 Visita)
-        # 20% do sonho é fluxo normal para não esquecer o básico
+        # 1. Dobramos a capacidade de processamento por turno
+        self.batch_size = 512
+        
         if len(self.memory) < self.batch_size:
             return 
         
         memory_list = list(self.memory)
         
-        # BALDE 1: Memórias de Alto Impacto (Choque Tático)
-        # Filtra jogadas que geraram grande variação de pontos (Vitórias, Derrotas ou trocas brutais do PBRS)
-        high_impact = [m for m in memory_list if abs(m[2]) > 80.0]
+        # 2. Otimização de Performance: Amostragem da Memória Recente
+        # Usa a memória atual de 10k turnos como termômetro da ignorância da IA.
+        single_visit_count = 0
         
-        # BALDE 2: Estados Raros (Combate à Cauda Longa)
-        # Força o cérebro a sonhar com estados que ele visitou menos de 3 vezes na vida real
-        rare_states = []
+        bucket_1_visit = []
+        bucket_2_to_4 = []
+        bucket_high_reward = []
+        
         for m in memory_list:
-            abs_state = self._get_abstract_state(m[0])
-            if self.visit_counts.get(abs_state, 0) < 3:
-                rare_states.append(m)
+            state, action_str, reward, next_state = m
+            abs_state = self._get_abstract_state(state)
+            visits = self.visit_counts.get(abs_state, 0)
+            
+            # Distribuição mútua
+            if visits <= 1:
+                single_visit_count += 1
+                bucket_1_visit.append(m)
+            elif 2 <= visits <= 4:
+                bucket_2_to_4.append(m)
                 
-        # BALDE 3: Memórias Comuns (Manutenção e Generalização)
-        common = memory_list
+            # Alto Impacto Tático (+80 de Potencial ou Dano Massivo)
+            if abs(reward) >= 80.0:
+                bucket_high_reward.append(m)
+
+        # 3. O Termômetro da Ignorância (A Regra de 30%)
+        single_visit_ratio = single_visit_count / len(memory_list)
         
+        if single_visit_ratio > 0.30:
+            # MODO FAXINA: Há muito desconhecimento na área
+            target_1v = int(self.batch_size * 0.70)
+            target_2to4 = int(self.batch_size * 0.20)
+            target_high = self.batch_size - target_1v - target_2to4 # ~10%
+        else:
+            # MODO CONSOLIDAÇÃO: O terreno já é familiar
+            target_1v = int(self.batch_size * 0.20)
+            target_2to4 = int(self.batch_size * 0.60)
+            target_high = self.batch_size - target_1v - target_2to4 # ~20%
+            
+        # 4. Amostragem de Segurança (Garante que o lote encha sem quebrar por falta de dados)
         batch = []
         
-        n_high = min(int(self.batch_size * 0.40), len(high_impact))
-        if n_high > 0: batch.extend(random.sample(high_impact, n_high))
-        
-        n_rare = min(int(self.batch_size * 0.40), len(rare_states))
-        if n_rare > 0: batch.extend(random.sample(rare_states, n_rare))
-        
-        n_common = self.batch_size - len(batch)
-        if n_common > 0: batch.extend(random.sample(common, n_common))
+        def sample_bucket(bucket, target_size):
+            available = len(bucket)
+            if available == 0: return []
+            take = min(target_size, available)
+            return random.sample(bucket, take)
             
-        # Executa o aprendizado noturno
+        batch.extend(sample_bucket(bucket_1_visit, target_1v))
+        batch.extend(sample_bucket(bucket_2_to_4, target_2to4))
+        batch.extend(sample_bucket(bucket_high_reward, target_high))
+        
+        # Se os baldes acima não preencherem os 256 slots, completamos com a memória geral
+        missing = self.batch_size - len(batch)
+        if missing > 0:
+            batch.extend(random.sample(memory_list, min(missing, len(memory_list))))
+            
+        # Embaralha para que a Q-Table não crie viés da ordem de atualização
+        random.shuffle(batch)
+        
+        # 5. Execução do Sonho
         for state, action_str, reward, next_state in batch:
             self._apply_q_update(state, action_str, reward, next_state, is_replay=True)
 

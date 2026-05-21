@@ -1,11 +1,11 @@
 {
-  "phase": "selfplay",
-  "opponent": "selfplay_frozen",
+  "phase": "instinct",
+  "opponent": "instinct",
   "n_battles": 10000,
-  "session_number": 31,
+  "session_number": 24,
   "brain_filename": "blue_brain.pkl",
-  "frozen_brain": "C:\\Projetos Robotica Computacional\\Projeto Showdown IA Pokemon\\Bot-QV-Pokemon\\Instinto\\frozen_blue_brain.pkl",
-  "target_wr": 0.53,
-  "patience": 4,
+  "frozen_brain": null,
+  "target_wr": 0.65,
+  "patience": 3,
   "block_size": 500
 }

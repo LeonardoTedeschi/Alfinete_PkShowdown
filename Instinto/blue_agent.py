@@ -148,10 +148,6 @@ class BLUE(Player):
                 
         except Exception as e:
             print(f"[Aviso] Erro ao processar fim de batalha: {e}")
-
- 
-        if hasattr(self.brain, 'replay_experience'):
-            self.brain.replay_experience()
         
     def teampreview(self, battle):
         try:
@@ -377,7 +373,7 @@ class BLUE(Player):
 # =============================================================================
 async def main():
     n_battles = args.n_battles
-    CONCURRENCY = 5
+    CONCURRENCY = 7
     
     team_builder = RandomTeamFromPool(TEAMS_LIST)
     
