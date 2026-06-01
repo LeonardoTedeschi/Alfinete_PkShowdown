@@ -2,7 +2,7 @@
   "phase": "instinct",
   "opponent": "instinct",
   "n_battles": 10000,
-  "session_number": 24,
+  "session_number": 25,
   "brain_filename": "blue_brain.pkl",
   "frozen_brain": null,
   "target_wr": 0.65,

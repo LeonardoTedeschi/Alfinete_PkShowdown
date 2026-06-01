@@ -6,7 +6,7 @@ import threading
 from collections import deque
 
 class BlueBrain:
-    def __init__(self, alpha=0.2, gamma=0.95, epsilon=0.40, min_epsilon=0.05, decay=0.005):
+    def __init__(self, alpha=0.2, gamma=0.99, epsilon=0.40, min_epsilon=0.05, decay=0.005):
         self.initial_alpha = alpha
         self.min_alpha = 0.005
         self.alpha = alpha
@@ -20,9 +20,11 @@ class BlueBrain:
         self.visit_counts = {}  
         self._qtable_lock = threading.Lock()
 
-        self.memory = deque(maxlen=10000) 
+        self.memory = deque(maxlen=15000) 
         self.batch_size = 512
         
+        self.wr_history = []
+
         # --- ESTRUTURA DE AÇÕES ATUALIZADA (V7) ---
         self.base_actions = [
             "ATTACK_STRONG", "ATTACK_PREDICTIVE", "ATTACK_PIVOT", "ATTACK_TECH", 
@@ -255,6 +257,39 @@ class BlueBrain:
             new_val = (1 - effective_alpha) * old_val + effective_alpha * (reward + self.gamma * next_max)
             self.q_table[abs_state][action_idx] = new_val
 
+    def apply_epsilon_shock_if_stagnant(self, current_win_rate):
+        """Analisa a Win Rate e aplica um desfibrilador na exploração apenas se o bot estiver empacado no epsilon mínimo."""
+        
+        # 1. Se NÃO chegamos no Epsilon Mínimo, não fazemos contagem nenhuma.
+        # (A margem de 0.001 previne bugs de arredondamento de float no Python)
+        if self.epsilon > (self.min_epsilon + 0.001):
+            self.wr_history.clear() # Mantém a lista limpa enquanto o epsilon cai
+            return
+
+        # 2. Chegamos no piso mínimo. Agora sim começamos a gravar a janela de avaliação.
+        self.wr_history.append(current_win_rate)
+        
+        if len(self.wr_history) > 5:
+            self.wr_history.pop(0)
+            
+        # 3. Só avaliamos quando tivermos 5 blocos (2500 batalhas) cravados no Epsilon Mínimo
+        if len(self.wr_history) == 5:
+            avg_wr = sum(self.wr_history) / 5.0
+            variance = max(self.wr_history) - min(self.wr_history)
+            
+            # 4. SILÊNCIO TOTAL: Nenhum print será feito a menos que seja um cenário de falha crítica.
+            if avg_wr < 65.0 and variance < 6.0:
+                shock_value = min(self.initial_epsilon, self.min_epsilon + 0.10)
+                phase_name = getattr(self, 'current_phase', 'unknown').upper()
+                
+                print(f"\n[CÉREBRO] ESTAGNAÇÃO CRÍTICA DETECTADA! (Fase: {phase_name} | Média: {avg_wr:.1f}%)")
+                print(f"[CÉREBRO] Histórico do Platô: {self.wr_history} | Variância: {variance:.2f}%")
+                print(f"[CÉREBRO] APLICANDO CHOQUE DE EPSILON: {shock_value:.3f}\n")
+                
+                # Aplica o choque e limpa o histórico para o bot ter tempo de recuperar
+                self.epsilon = shock_value 
+                self.wr_history.clear()
+    
     # =====================================================================
     # PRIORITIZED EXPERIENCE REPLAY (PER) - Motor de Sonho Inteligente
     # =====================================================================        
@@ -265,12 +300,12 @@ class BlueBrain:
         if len(self.memory) < self.batch_size:
             return 
         
-        memory_list = list(self.memory)
+        # Otimização de Performance: Limitamos a leitura a 4.000 memórias aleatórias.
+        # Isso garante que o tempo de treino não passe de ~30 minutos.
+        sample_size = min(4000, len(self.memory))
+        memory_list = random.sample(self.memory, sample_size)
         
-        # 2. Otimização de Performance: Amostragem da Memória Recente
-        # Usa a memória atual de 10k turnos como termômetro da ignorância da IA.
         single_visit_count = 0
-        
         bucket_1_visit = []
         bucket_2_to_4 = []
         bucket_high_reward = []
@@ -287,8 +322,8 @@ class BlueBrain:
             elif 2 <= visits <= 4:
                 bucket_2_to_4.append(m)
                 
-            # Alto Impacto Tático (+80 de Potencial ou Dano Massivo)
-            if abs(reward) >= 80.0:
+            # Alto Impacto Tático (Ajustado para 60.0 para capturar trocas eficientes)
+            if abs(reward) >= 60.0:
                 bucket_high_reward.append(m)
 
         # 3. O Termômetro da Ignorância (A Regra de 30%)
@@ -318,7 +353,7 @@ class BlueBrain:
         batch.extend(sample_bucket(bucket_2_to_4, target_2to4))
         batch.extend(sample_bucket(bucket_high_reward, target_high))
         
-        # Se os baldes acima não preencherem os 256 slots, completamos com a memória geral
+        # Se os baldes acima não preencherem os 512 slots, completamos com a memória geral
         missing = self.batch_size - len(batch)
         if missing > 0:
             batch.extend(random.sample(memory_list, min(missing, len(memory_list))))

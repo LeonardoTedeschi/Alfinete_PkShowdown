@@ -498,10 +498,17 @@ async def main():
                     print(f"[Progresso] {completed} Batalhas | Win Rate: {win_rate_bloco:.1f}% | Reward: {bot.total_reward_sum:.0f} | Novos Est: {new_states_this_block} | Estados: {current_q_size} | Eps: {bot.brain.epsilon:.3f} | Visitas: {avg_visits:.2f} | Conf: {conf_rate:.1f}%")
                 except AttributeError:
                     print(f"[Progresso] {completed} Batalhas | Win Rate: {win_rate_bloco:.1f}% | Reward: {bot.total_reward_sum:.0f} | Novos Est: {new_states_this_block} | Estados: {current_q_size} | Eps: {bot.brain.epsilon:.3f}")
+                
                 # --- ATUALIZAÇÃO INTELIGENTE DO EPSILON ---
-                if hasattr(bot.brain, 'decay_epsilon'):
-                    bot.brain.decay_epsilon(new_states=new_states_this_block, battles_in_block=processed_this_block)
+                try:
+                    if hasattr(bot.brain, 'decay_epsilon'):
+                        bot.brain.decay_epsilon(new_states=new_states_this_block, battles_in_block=processed_this_block)
                     
+                    if hasattr(bot.brain, 'apply_epsilon_shock_if_stagnant'):
+                        bot.brain.apply_epsilon_shock_if_stagnant(win_rate_bloco)
+                except Exception as e:
+                    print(f"\n[AVISO] Erro na gestão de Epsilon: {e}")
+                
                 try:
                     with open(bot.paths['csv'], 'a', newline='') as f:
                         writer = csv.writer(f)
