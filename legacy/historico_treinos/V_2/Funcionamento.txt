@@ -1,0 +1,32 @@
+### Arquitetura V2: Q-Learning com Heurística Base e Exploração Clássica
+
+Nesta iteração, o bot abandonou a dependência total do instinto engessado e passou a utilizar o Q-Learning como tomador de decisão primário, mas ainda operava com limitações de percepção e uma política de exploração tradicional.
+
+**1. Separação de Módulos**
+A arquitetura foi dividida em dois motores distintos:
+* **InstinctCore (O Especialista):** Responsável por ler a arena do Pokémon Showdown sem interagir com a rede. Ele traduzia o campo em variáveis, aplicava regras de imunidade (como *Magic Bounce* e *Wonder Guard*) e gerava uma recomendação de jogada (a intenção do instinto).
+* **BlueBrain (A Matriz):** O motor de Aprendizado por Reforço que armazenava as notas históricas de cada ação e tomava a decisão final.
+
+**2. Percepção de Estado (A Tupla de 6 Dimensões)**
+O Cérebro enxergava o jogo através de uma tupla compacta de 6 variáveis:
+1.  Role do Aliado (`SPEED_SWEEPER`, `TANK_BULK`, `UTILITY`)
+2.  Role do Inimigo (`SPEED_SWEEPER`, `TANK_BULK`, `UTILITY`)
+3.  Vantagem de Tipagem / Matchup (`DOMINANT`, `VOLATILE`, `STALEMATE`, etc.)
+4.  Faixa de HP do Aliado (`FULL`, `MED`, `LOW`, `CRIT`)
+5.  Clima em Campo (`NORMAL`, `RAIN`, `SUN`, etc.)
+6.  Nível de Velocidade (`FASTER`, `SLOWER`, `TIED`)
+
+Essa modelagem gerava um espaço amostral restrito de aproximadamente 2.700 a 2.800 estados possíveis no ambiente real de jogo.
+
+**3. Espaço de Ações Expandido**
+O bot deixou de agrupar magias e passou a mapear 12 saídas exatas na Q-Table (`ATTACK`, `SWITCH`, `BUFF`, `DEBUFF`, `STATUS`, `PROTECT`, `HAZARD`, `HEAL`, `HEAL_50`, `TEAM_CURE`, `CLEAN`, `STAT_CLEAN`). Isso permitiu que o algoritmo entendesse exatamente qual efeito prático gerava a recompensa, em vez de tratar táticas distintas apenas como `SETUP`.
+
+**4. Política de Tomada de Decisão (Epsilon-Greedy Tradicional)**
+A V2 utilizava o algoritmo Epsilon-Greedy padrão:
+* A cada turno, o bot "rolava um dado". Se o valor caísse dentro da taxa do $\epsilon$, ele ignorava a inteligência da matriz e o instinto, escolhendo uma jogada 100% aleatória para testar o ambiente.
+* Quando não estava explorando, ele comparava a nota da matriz para a recomendação do `InstinctCore`. Se o Cérebro tivesse uma nota maior mapeada para outra ação, ele sobrepunha o instinto e buscava o *argmax*.
+
+**5. Limitações Críticas da V2 (Gatilhos para a V3)**
+* **A Punição da Exploração Cega:** Como o decaimento do Epsilon deixava um resíduo de exploração alto (cerca de 24% no turno 10.000), o bot entregava partidas ganhas contra oponentes inteligentes ao forçar testes suicidas sem necessidade.
+* **Cegueira Tática (Blind Spots):** A tupla de 6 variáveis não informava ao bot se o inimigo já estava envenenado, se já havia *Stealth Rock* no campo ou se o oponente havia usado *Swords Dance*. Isso fazia o bot entrar em loops repetitivos de *Status* contra alvos já afligidos ou ignorar ameaças de *Setup* iminente.
+* **Teto de Win Rate:** Devido a esses dois fatores conjuntos, o bot bateu em um teto de vitórias na casa dos 60% ao enfrentar adversários mais complexos (como o `InstinctBot` com capacidade de troca e status).

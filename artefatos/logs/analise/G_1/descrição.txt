@@ -1,0 +1,1 @@
+Agente green básico com recompensa terminal e com bug de recompensa potencial (hazards, status e buffs)

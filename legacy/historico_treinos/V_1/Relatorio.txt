@@ -1,0 +1,40 @@
+### Fase 1: Arquitetura Inicial (Heurística Dominante e Cegueira Tática)
+No início, o bot operava sob uma forte dependência do `instinct_core.py`, tratando o Q-Learning como uma ferramenta secundária. 
+
+* **A Cegueira Tática:** A matriz do Cérebro (`blue_brain.py`) possuía apenas 5 colunas de ação (`ATTACK`, `SWITCH`, `SETUP`, `HAZARD`, `HEAL`). Para se comunicar com a matriz, o Instinto pegava 12 intenções distintas e as aglomerava. Ações cruciais como `PROTECT`, `STATUS`, `BUFF` e `DEBUFF` eram todas traduzidas genericamente como `SETUP`. Isso impedia o Cérebro de entender exatamente qual jogada gerava a recompensa.
+* **O Teto de 61%:** A lógica de decisão determinava que, se a nota da jogada recomendada pelo Instinto fosse maior ou igual a zero (`q_value_instinct >= 0`), o bot a executaria cegamente. O Cérebro só assumia o controle se o Instinto fosse estritamente negativo. Isso impedia o bot de explorar táticas otimizadas e travava a taxa de vitórias na casa dos 61%.
+* **Vazamento de Dados e Travamentos:** O executor de ações tentava forçar o uso de magias a partir de `active.moves.values()`, esbarrando em ataques sem PP ou bloqueados por *Taunt*. Além disso, a leitura do multiplicador de dano com variáveis do tipo string gerava falhas que corrompiam os turnos.
+
+### Fase 2: Blindagem do Ambiente (Otimização de Dados)
+Antes de escalar a inteligência, a infraestrutura precisou ser estabilizada para garantir que a matriz registrasse apenas dados puros.
+
+* **Watchdog de Rede:** Foram adicionados temporizadores (`asyncio.wait_for` com timeout de 300s) no loop do `blue_agent.py` para derrubar batalhas travadas por engasgos do servidor local ("Ghost Battles"), permitindo que o treino de 10.000 partidas rodasse de forma ininterrupta.
+* **Filtro de Ações Válidas:** O `instinct_core.py` passou a buscar os golpes exclusivamente em `battle.available_moves`, garantindo que o bot só gerasse intenções matematicamente possíveis de serem executadas pelo simulador.
+* **Fallback Máximo:** Caso um bloqueio total de arena ocorresse, o bot foi configurado para tentar bater com o dano mais alto disponível ou trocar, usando o `choose_random_move` apenas em último caso.
+
+### Fase 3: Transição de Poder e Expansão Dimensional
+Com o ambiente blindado, a arquitetura de tomada de decisão foi invertida para priorizar o Aprendizado por Reforço.
+
+* **Expansão da Matriz:** O mapeamento aglomerado foi deletado. A Q-Table foi expandida para 12 colunas exatas correspondentes às intenções do Instinto (`ATTACK`, `BUFF`, `STAT_CLEAN`, etc.), dando granularidade ao aprendizado.
+* **Q-Learning Assumindo o Controle:** A função `decide_action` passou a utilizar a função `argmax`. O bot passou a comparar a nota do Instinto com a melhor nota conhecida da matriz. Se a matriz apresentasse uma solução matematicamente superior, o Instinto era sobreposto. Isso quebrou o teto heurístico, permitindo que a taxa de vitórias subisse para perto de 70%.
+
+### Fase 4: O Controle da Exploração (Exploração Reativa)
+A abordagem tradicional de "Epsilon-Greedy" (jogar um dado e fazer uma ação aleatória) estava sabotando os resultados finais do bot, fazendo-o jogar fora turnos ganhos. A lógica final adotou o conceito de Exploração Reativa.
+
+* A taxa de exploração randômica foi desvinculada de um sorteio por turno. O bot agora só gera uma jogada aleatória se for constatado que o Instinto resulta em uma pontuação negativa (`< 0`) e todas as outras ações mapeadas pelo Cérebro naquele estado também resultam em pontuação negativa. Ele explora apenas quando está em um beco sem saída.
+
+---
+
+### Histórico de Hiperparâmetros nos Treinamentos
+
+A cada bateria de testes, as variáveis do Q-Learning foram ajustadas conforme o objetivo da análise:
+
+1.  **Treinamentos Iniciais (Teto de 61%):**
+    * $\alpha = 0.1$ | $\gamma = 0.8$ | $\epsilon = 0.3$.
+    * Foco: Preenchimento rápido da matriz, mas com pouca visão de longo prazo para táticas de controle.
+2.  **Testes de Explotação Pura (Validação do Aprendizado):**
+    * $\alpha = 0.01$ | $\gamma = 0.95$ | $\epsilon = 0.0$.
+    * Foco: Avaliar a força bruta do Cérebro contra a variação de times do ambiente. O $\epsilon$ zerado impediu o bot de testar táticas suicidas. O $\gamma$ alto forçou o bot a valorizar o desgaste a longo prazo (Status e Hazards).
+3.  **Configuração Atual (Reaprendizado / MaxDamage):**
+    * $\alpha = 0.1$ | $\gamma = 0.95$ | $\epsilon = 0.4$ (usado antes da transição para Exploração Reativa).
+    * Foco: Aumentar o $\alpha$ para "desaprender" vícios caso o comportamento do oponente exija uma adaptação rápida, mantendo o foco estratégico a longo prazo com o $\gamma = 0.95$.

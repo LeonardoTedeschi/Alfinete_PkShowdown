@@ -1,0 +1,33 @@
+Relatório de Desempenho e Estado Atual: Q-Learning vs MaxDamagePlayer
+1. Configuração do Ambiente e Parâmetros
+
+Agente (BLUE): Q-Learning tabular com 12 ações de saída independentes, integrado ao InstinctCore para validação de regras do jogo e heurística de desempate.
+
+Adversário: MaxDamagePlayer. Oponente engessado que seleciona exclusivamente o golpe de maior base_power, sem capacidade de troca, uso de status ou leitura defensiva.
+
+Cenário de Teste: Formato Gen9 National Dex, utilizando um ambiente contido de 15 equipes pré-montadas (sorteio aleatório via RandomTeamFromPool).
+
+2. Estado da Matriz Cognitiva (Q-Table)
+
+Dimensionalidade: A tupla de estado foi expandida para 12 variáveis (incluindo leitura de Status, Boosts e Hazards no campo). O limite matemático teórico saltou para aproximadamente 388.800 estados.
+
+Mapeamento Atual: O bot mapeou cerca de 25.000 estados práticos durante as baterias de até 20.000 batalhas. O volume de estados continuou crescendo de forma orgânica devido às permutações das 15 equipes e à vastidão da nova tupla.
+
+3. Desempenho Estatístico Consolidado
+
+Teto de Vitórias: A taxa de vitórias atingiu um platô sólido entre 71.7% e 72.3%.
+
+Margem de Lucro da IA: Considerando que o confronto baseia-se nas mesmas mecânicas estatísticas do simulador, o teto natural seria de 50%. O Q-Learning está extraindo aproximadamente +22% de vantagem tática puramente pela experiência empírica contra a agressividade do adversário.
+
+Limitação do Teto (A Barreira dos 75%+): A parcela de ~28% de derrotas é sustentada por dois fatores:
+
+Variância de Matchup e RNG: Desvantagens extremas no sorteio das 15 equipes e fatores aleatórios do simulador (Critical Hits, falhas de precisão).
+
+Turnos Mortos Reativos: O bot perdeu eficiência ao tentar aplicar Hazards ou Status prolongados contra um oponente que nunca troca de Pokémon e visa apenas o abate imediato em 100% dos turnos.
+
+4. Diagnóstico Comportamental: O Conformismo Tático (Mínimo Local)
+O modelo atual utiliza a política de Exploração Reativa (o gatilho aleatório só dispara se o Instinto e a Q-Table possuírem nota < 0).
+
+Efeito Prático: O bot aprendeu a "não perder", mas não a otimizar a vitória.
+
+Mecânica da Falha: Se uma ação primária (ex: atacar) gera uma vitória marginal, a matriz registra uma nota positiva. Na repetição do estado, o bot seleciona essa ação porque ela é >= 0. Ele ignora rotas táticas superiores (como um setup de Swords Dance que garantiria o nocaute de toda a equipe inimiga) porque o algoritmo está programado para nunca explorar enquanto a nota atual for positiva.

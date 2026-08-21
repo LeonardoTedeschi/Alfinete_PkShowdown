@@ -1,0 +1,25 @@
+Relatório de Desempenho: Versão Blue V_6
+Visão Geral do Modelo
+
+Arquitetura: Q-Learning com Instinto 4D (Híbrido Mestre-Aluno).
+
+Adversários Enfrentados: MaxDamagePlayer (Fase 1) e InstinctBot (Fase 2).
+
+Volume de Estados: 133.391 mapeados.
+
+Taxa de Exploração (Final): 5% (0.05000).
+
+Win Rate Global (Dashboard): 43.52%.
+
+Análise da Q-Table e Heurísticas de Ação
+
+Distribuição de Decisões: A heurística de ataque dominou completamente o comportamento. O bot escolheu ATTACK_STRONG em 55.4% do tempo e ATTACK_TECH em 21.5%.
+
+Taxa de Trocas: O Switch Rate estabilizou em 16.2% (SWITCH_DEFENSIVE). Este é o único indicador positivo real, provando que a mecânica de "Pedágio de Troca" funcionou e o bot parou com o loop de covardia, usando trocas de forma tática.
+
+Obliteração de Utilidade: Ações de setup, campo e status foram praticamente abandonadas. O modelo aprendeu que "Dano é a melhor defesa".
+
+Top 20 Estados: Todos os 20 estados de maior pontuação na matriz (com Q-Values beirando 2000 pontos) são ordens diretas de ATTACK_STRONG. Não há presença de adaptação estratégica de longo prazo nas notas máximas.
+
+Veredicto Técnico
+A versão V_6 atingiu um limite estrutural. O modelo não é incapaz de aprender, mas a sua base de dados atual (blue_brain.pkl de 133k estados) está irremediavelmente viciada no comportamento suicida do MaxDamage. O "Cérebro" consolidou notas altas para decisões de força bruta que são ativamente prejudiciais contra um adversário estruturado como o Instinto.

@@ -1,0 +1,21 @@
+RELATÓRIO DE TREINAMENTO - 20260203_000904
+========================================
+
+Total de Estados Únicos: 8260
+Taxa de Exploração (Epsilon): 0.04996
+Estados Otimistas: 3026
+Estados Pessimistas: 5234
+Taxa de Confiança: 36.63%
+
+TOP 10 ESTADOS:
+       Q-Value            Ação                                                                                             Cenário
+0  8013.694361  ATACAR (idx 0)   Ameaça: EXTREMA | Dano: Ótimo\nHP: Cheio vs Cheio | Clima: Limpo\nSpeed: Lento | Placar: Vencendo
+1  7568.416221  ATACAR (idx 0)      Ameaça: Neutra | Dano: Ótimo\nHP: Cheio vs Cheio | Clima: Limpo\nSpeed: Lento | Placar: Empate
+2  7568.416221  ATACAR (idx 0)  Ameaça: EXTREMA | Dano: Ótimo\nHP: Cheio vs Cheio | Clima: Limpo\nSpeed: Rápido | Placar: Vencendo
+3  7125.045496  ATACAR (idx 0)     Ameaça: Alta | Dano: Ótimo\nHP: Baixo vs Baixo | Clima: Limpo\nSpeed: Rápido | Placar: Vencendo
+4  6650.623288  ATACAR (idx 1)      Ameaça: Alta | Dano: Ótimo\nHP: Médio vs Cheio | Clima: Limpo\nSpeed: Lento | Placar: Vencendo
+5  6650.623288  ATACAR (idx 2)  Ameaça: EXTREMA | Dano: Ótimo\nHP: Baixo vs Baixo | Clima: Limpo\nSpeed: Rápido | Placar: Vencendo
+6  6650.623288  ATACAR (idx 0)   Ameaça: EXTREMA | Dano: Ótimo\nHP: Médio vs Baixo | Clima: Limpo\nSpeed: Lento | Placar: Vencendo
+7  6415.366569  ATACAR (idx 0)      Ameaça: Alta | Dano: Ótimo\nHP: Cheio vs Cheio | Clima: Limpo\nSpeed: Lento | Placar: Vencendo
+8  6415.366569  ATACAR (idx 1)      Ameaça: Alta | Dano: Ótimo\nHP: Cheio vs Baixo | Clima: Limpo\nSpeed: Lento | Placar: Vencendo
+9  6058.029670  ATACAR (idx 0)   Ameaça: Baixa | Dano: Ótimo\nHP: Cheio vs Crítico | Clima: Limpo\nSpeed: Lento | Placar: Vencendo

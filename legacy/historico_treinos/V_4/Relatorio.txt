@@ -1,0 +1,36 @@
+Relatório de Treinamento: Agente BLUE (Fase 1 - 100.000 Batalhas)
+1. Resumo Operacional
+
+Oponente: MaxDamagePlayer (Heurística focada estritamente em dano máximo).
+
+Volume de Treinamento: 100.000 batalhas concluídas.
+
+Desempenho Final (Sessão 5): Taxa de vitórias estagnada em 58,19% no bloco de encerramento.
+
+Sistema Econômico Vigente: Recompensas assimétricas projetadas para um ponto de equilíbrio de 55,5% (R_WIN = +2000.0, R_LOSE = -2500.0).
+
+2. Crescimento e Saúde da Matriz (Q-Table)
+O Cérebro mapeou um total de 74.586 estados únicos ao fim do treinamento. A economia assimétrica provou ser um sucesso absoluto no controle de inflação da rede:
+
+Estabilidade de Notas: O relatório consolidado demonstra que a matriz não sofreu hipervalorização. O maior Q-Value registrado cravou em 2148.97, perfeitamente alinhado com a recompensa máxima de +2000 pontos.
+
+Maturação Estatística: A curva de novos estados começou a achatar significativamente, indicando que o bot já mapeou a esmagadora maioria dos cenários possíveis dentro do Micro-Meta das RandomTeamsFromPool.
+
+3. Comportamento Tático Consolidado
+O agente abandonou o comportamento de "batedor cego" e desenvolveu um perfil tático misto, comprovado pelo painel de distribuição de ações:
+
+Ataque (62,3%): Ação majoritária, altamente correlacionada nos Top 20 estados com a faixa de HP oponente CRIT, provando que o bot compreende a prioridade de execução.
+
+Suporte (23,0%): Uso consistente de curas, buffs e hazards para preparar o terreno.
+
+Troca / Switch (14,7%): O bot aprendeu a recuar unidades sob ameaça, abandonando a tática passiva de sacrificar Pokémon em desvantagem.
+
+4. Diagnóstico do Gargalo (O Teto de 58%)
+Apesar da vasta base de conhecimento tático (74.586 estados mapeados), o bot foi incapaz de cruzar a barreira dos 60%. Os dados provam que isso ocorreu devido à configuração da arquitetura de tomada de decisão, e não por falha no aprendizado:
+
+Acúmulo de Déficit: O gráfico de evolução mostra a linha de Recompensa Média (Avg Reward) despencando linearmente para um abismo negativo.
+
+A Armadilha da Exploração Reativa: Com as notas empurradas para baixo de zero, a lógica do bot acionava rotinas de exploração sempre que ele se encontrava em desvantagem. Em vez de utilizar as 100 mil partidas de experiência para escolher a rota "menos punitiva", o bot realizava testes estocásticos (aleatórios) tentando achar saídas irreais, entregando vitórias ganhas e ancorando a taxa geral de sucesso na casa dos 58%.
+
+5. Conclusão da Fase 1
+O treinamento contra o MaxDamagePlayer cumpriu o seu objetivo no Curriculum Learning. A IA gerou uma base de dados densa e taticamente correta. A arquitetura atual requer agora a transição para Pure Exploitation (Exploração Pura) — desligando o Epsilon e as rotinas de desespero aleatório — para que o agente utilize exclusivamente as rotas otimizadas contra os próximos adversários.

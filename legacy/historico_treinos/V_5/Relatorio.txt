@@ -1,0 +1,37 @@
+### Relatório Técnico de Treinamento: Agente Q-Learning (v_5) - Marco de 100.000 Batalhas
+
+Abaixo está a consolidação e análise dos dados das sessões finais (blocos 5 a 10) do agente v_5, marcando a conclusão do ciclo de 100.000 batalhas.
+
+---
+
+#### 1. Desempenho Geral e Taxa de Vitórias (Win Rate)
+O modelo atingiu um platô de desempenho sólido e estável na faixa dos **42% a 43%**.
+
+* **Sessão 8:** 42.78% (Pico do bloco em 45.6%)
+* **Sessão 9:** 42.18% (Pico do bloco em 47.0%)
+* **Sessão 10:** 43.06% (Pico do bloco em 46.8%)
+
+**Análise:** O agente rompeu definitivamente a barreira dos 30-35% observada nas arquiteturas anteriores. A variação entre os blocos de 500 batalhas nestas últimas sessões (oscilando entre 38% e 47%) demonstra que a IA encontrou uma política de otimização local forte. A estagnação consistente nesses valores confirma que a versão 5 extraiu o máximo de eficiência possível das regras matemáticas e da tupla de estados atuais.
+
+#### 2. Saturação do Espaço de Estados (State Space)
+A evolução do preenchimento da Q-Table indica maturidade e convergência do modelo.
+
+* **Final da Sessão 4 (Estimado):** ~82.500 estados.
+* **Início da Sessão 8:** 97.248 estados.
+* **Final da Sessão 10:** 107.117 estados.
+
+**Análise:** O crescimento do dicionário de estados está desacelerando. Nas sessões iniciais, o agente descobria dezenas de milhares de estados por bloco de 10k batalhas. Na Sessão 10, apenas cerca de **2.895 novos estados** foram adicionados em 10.000 batalhas. Isso significa que em mais de 95% dos turnos o cérebro já reconhece a situação do campo e possui um Q-Value histórico para balizar sua decisão. O modelo parou de jogar no escuro.
+
+#### 3. Comportamento da Política (Epsilon e Exploração)
+Com o decaimento configurado, o agente operou a maior parte destas sessões finais em modo de pura exploração de conhecimento (Epsilon mínimo).
+
+* O desempenho constante atesta que a lógica de "Veto do Cérebro" funcionou para estabilizar as ações.
+* As quedas esporádicas de Win Rate para a casa dos 37-39% em blocos específicos ocorrem quando a margem de desempate força o agente a testar ramificações de ações secundárias em estados muito repetitivos, ou quando a aleatoriedade do próprio jogo (RNG, Críticos, Misses) impacta blocos menores.
+
+#### 4. Conclusão Técnica sobre a v_5
+A arquitetura v_5 é um sucesso estatístico dentro de suas limitações sistêmicas. Ela provou que:
+1.  A Q-Table consegue processar 14 variáveis dinâmicas sem colapsar.
+2.  A delegação de execução bruta para o Instinto eleva o piso de habilidade do bot de 15% para 43%.
+3.  O teto de vidro de ~43% é intransponível sem refatorar a forma como o bot engaja com manobras de *Momentum* (Pivots) e sobrevivência de longo prazo (Hazards).
+
+Os dados justificam inteiramente o encerramento da v_5 e a transição para a v_6, onde a divisão de ações (como `SWITCH_OFFENSIVE` e `ATTACK_PIVOT`) e a alteração da margem de desempate atuarão diretamente sobre este platô.

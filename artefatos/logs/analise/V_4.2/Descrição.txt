@@ -1,0 +1,2 @@
+Versão do Blue atual que não utiliza a mascará de ações e tem a recompensa terminal como sinal forte 5k, e sinais fracos de avanço(derrotar e perder Pokémons)
+de 100.
