@@ -1,0 +1,387 @@
+(venv-teste) PS C:\Projetos Robotica Computacional\Projeto Showdown IA Pokemon\Bot-QV-Pokemon> python -m scripts.jogar_contra_instinto --batalha 4 --oficial
+[LOGIN] a autenticar 'AlfineteInstinto' (password de BOT_SENHA)
+        Se der 'nametaken ... token was invalid', o nome ainda NAO
+        esta registado com esta password. Registar em
+        play.pokemonshowdown.com -> Settings -> Register.
+[TIME] sorteado de 60 times do pool de treino
+
+======================================================================
+  InstinctBot ligado a play.pokemonshowdown.com
+  Nome do bot   : AlfineteInstinto
+  A aceitar de  : QUALQUER PESSOA
+  Formato       : gen9nationaldex
+  Batalhas      : 4
+======================================================================
+
+  DIAGNOSTICO LIGADO: vais ver [DECISAO], [HAZ], [QUAR] e [IMUNE].
+
+  No navegador: procura o nome do bot em 'Find a user' -> 'Challenge',
+  escolhe o formato [Gen 9] National Dex e envia o desafio.
+
+[HAZ] turno=1 golpe=stealthrock alvo=STEALTH_ROCK raw={} normalizado={}
+[HAZVALE] turno=1 motivo=sem impedimento
+[REGRA10] turno=1 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=1 intencao=ATTACK_TECH obj=rocktomb pos=0 ranking=['ATTACK_TECH', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE', 'ATTACK_STRONG']
+[HAZ] turno=2 golpe=stealthrock alvo=STEALTH_ROCK raw={} normalizado={}
+[HAZ] turno=2 golpe=stealthrock alvo=STEALTH_ROCK raw={} normalizado={}
+[HAZVALE] turno=2 motivo=sem impedimento
+[REGRA10] turno=2 vale=True pos_antes=3 pos_depois=0
+[HAZ] turno=2 golpe=stealthrock alvo=STEALTH_ROCK raw={} normalizado={}
+[HAZ] turno=2 golpe=stealthrock alvo=STEALTH_ROCK raw={} normalizado={}
+[DECISAO] turno=2 intencao=HAZARD obj=stealthrock pos=0 ranking=['HAZARD', 'ATTACK_TECH', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE', 'ATTACK_STRONG']
+[HAZ] turno=3 golpe=stealthrock alvo=STEALTH_ROCK raw={<SideCondition.STEALTH_ROCK: 19>: 2} normalizado={'STEALTH_ROCK': 1}
+[HAZVALE] turno=3 motivo=nao sobrevive a um golpe
+[REGRA10] turno=3 vale=False pos_antes=None pos_depois=None
+[DECISAO] turno=3 intencao=ATTACK_TECH obj=rocktomb pos=0 ranking=['ATTACK_TECH', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE', 'ATTACK_STRONG']
+[HAZVALE] turno=4 motivo=sem impedimento
+[REGRA10] turno=4 vale=True pos_antes=None pos_depois=None
+[QUAR] SAIDA turno=4 tag=battle-gen9nationaldex-2675712328 par=('gyarados','landorustherian') registo={('gyarados', 'landorustherian'): 4}
+[DECISAO] turno=4 intencao=SWITCH_DEFENSIVE obj=hawlucha pos=0 ranking=['SWITCH_DEFENSIVE', 'ATTACK_STRONG', 'BUFF', 'DISRUPTION', 'SWITCH_OFFENSIVE']
+[HAZVALE] turno=5 motivo=sem impedimento
+[REGRA10] turno=5 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=5 intencao=STATUS obj=substitute pos=0 ranking=['STATUS', 'ATTACK_PREDICTIVE', 'BUFF', 'SWITCH_DEFENSIVE', 'SWITCH_OFFENSIVE']
+[HAZVALE] turno=6 motivo=sem impedimento
+[REGRA10] turno=6 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=6 intencao=ATTACK_PREDICTIVE obj=hiddenpowerfire pos=0 ranking=['ATTACK_PREDICTIVE', 'ATTACK_STRONG', 'SWITCH_OFFENSIVE', 'STATUS', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=7 motivo=sem impedimento
+[REGRA10] turno=7 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=7 intencao=ATTACK_PREDICTIVE obj=leafstorm pos=0 ranking=['ATTACK_PREDICTIVE', 'ATTACK_STRONG', 'STATUS', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=8 motivo=sem impedimento
+[REGRA10] turno=8 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=8 intencao=ATTACK_PREDICTIVE obj=leafstorm pos=0 ranking=['ATTACK_PREDICTIVE', 'ATTACK_STRONG', 'STATUS', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=9 motivo=sem impedimento
+[REGRA10] turno=9 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=9 intencao=ATTACK_PREDICTIVE obj=hiddenpowerfire pos=0 ranking=['ATTACK_PREDICTIVE', 'ATTACK_STRONG', 'STATUS', 'SWITCH_DEFENSIVE', 'SWITCH_OFFENSIVE']
+[HAZVALE] turno=10 motivo=nao sobrevive a um golpe
+[REGRA10] turno=10 vale=False pos_antes=None pos_depois=None
+[DECISAO] turno=10 intencao=ATTACK_PREDICTIVE obj=hiddenpowerfire pos=0 ranking=['ATTACK_PREDICTIVE', 'ATTACK_STRONG', 'SWITCH_OFFENSIVE', 'STATUS', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=11 motivo=sem impedimento
+[REGRA10] turno=11 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=11 intencao=ATTACK_PREDICTIVE obj=focusblast pos=0 ranking=['ATTACK_PREDICTIVE', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE', 'ATTACK_STRONG']
+[HAZVALE] turno=12 motivo=nao sobrevive a um golpe
+[REGRA10] turno=12 vale=False pos_antes=None pos_depois=None
+[QUAR] CONSULTA turno=12 tag=battle-gen9nationaldex-2675712328 par=('gyarados', 'golemalola') turno_saida=None registo={('gyarados', 'landorustherian'): 4}
+[QUAR] CONSULTA turno=12 tag=battle-gen9nationaldex-2675712328 par=('blacephalon', 'golemalola') turno_saida=None registo={('gyarados', 'landorustherian'): 4}
+[QUAR] SAIDA turno=12 tag=battle-gen9nationaldex-2675712328 par=('tapulele','golemalola') registo={('gyarados', 'landorustherian'): 4, ('tapulele', 'golemalola'): 12}
+[DECISAO] turno=12 intencao=SWITCH_OFFENSIVE obj=blacephalon pos=0 ranking=['SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE', 'ATTACK_STRONG']
+[HAZVALE] turno=13 motivo=nao sobrevive a um golpe
+[REGRA10] turno=13 vale=False pos_antes=None pos_depois=None
+[DECISAO] turno=13 intencao=ATTACK_PREDICTIVE obj=shadowball pos=0 ranking=['ATTACK_PREDICTIVE', 'ATTACK_STRONG', 'STATUS', 'BUFF', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=14 motivo=nao sobrevive a um golpe
+[REGRA10] turno=14 vale=False pos_antes=None pos_depois=None
+[DECISAO] turno=14 intencao=ATTACK_PREDICTIVE obj=shadowball pos=0 ranking=['ATTACK_PREDICTIVE', 'ATTACK_STRONG', 'STATUS', 'BUFF', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=15 motivo=sem impedimento
+[REGRA10] turno=15 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=15 intencao=ATTACK_STRONG obj=waterfall pos=0 ranking=['ATTACK_STRONG', 'SWITCH_DEFENSIVE', 'BUFF', 'DISRUPTION', 'SWITCH_OFFENSIVE']
+[HAZVALE] turno=16 motivo=sem impedimento
+[REGRA10] turno=16 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=16 intencao=DISRUPTION obj=taunt pos=0 ranking=['DISRUPTION', 'ATTACK_STRONG', 'ATTACK_PREDICTIVE', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=17 motivo=adversario a montar
+[REGRA10] turno=17 vale=False pos_antes=None pos_depois=None
+[DECISAO] turno=17 intencao=ATTACK_STRONG obj=earthquake pos=0 ranking=['ATTACK_STRONG', 'ATTACK_PREDICTIVE', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE', 'BUFF']
+[HAZVALE] turno=18 motivo=adversario a montar
+[REGRA10] turno=18 vale=False pos_antes=None pos_depois=None
+[DECISAO] turno=18 intencao=ATTACK_PREDICTIVE obj=focusblast pos=0 ranking=['ATTACK_PREDICTIVE', 'ATTACK_STRONG', 'SWITCH_DEFENSIVE']
+
+A alteração do ataque do serpirior foi errada ele tinha um hidden power fire e só usou por engano, já contra o golem que receberia 2x do leafstorm ele preferiu usar hidden power fire; verificar esse erro está muito estranho;
+
+
+[HAZ] turno=1 golpe=stealthrock alvo=STEALTH_ROCK raw={} normalizado={}
+[HAZVALE] turno=1 motivo=setter unico, sobrevive a dois=True
+[REGRA10] turno=1 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=1 intencao=ATTACK_TECH obj=flamethrower pos=0 ranking=['ATTACK_TECH', 'SWITCH_OFFENSIVE', 'STATUS', 'ATTACK_STRONG', 'SWITCH_DEFENSIVE']
+[HAZ] turno=2 golpe=stealthrock alvo=STEALTH_ROCK raw={} normalizado={}
+[HAZVALE] turno=2 motivo=nao sobrevive a um golpe
+[REGRA10] turno=2 vale=False pos_antes=None pos_depois=None
+[DECISAO] turno=2 intencao=ATTACK_TECH obj=flamethrower pos=0 ranking=['ATTACK_TECH', 'SWITCH_OFFENSIVE', 'STATUS', 'ATTACK_STRONG', 'SWITCH_DEFENSIVE']
+[HAZ] turno=3 golpe=stealthrock alvo=STEALTH_ROCK raw={} normalizado={}
+[HAZVALE] turno=3 motivo=nao sobrevive a um golpe
+[REGRA10] turno=3 vale=False pos_antes=None pos_depois=None
+[QUAR] SAIDA turno=3 tag=battle-gen9nationaldex-2675715563 par=('torkoal','venusaur') registo={('torkoal', 'venusaur'): 3}
+[DECISAO] turno=3 intencao=SWITCH_OFFENSIVE obj=houndoom pos=0 ranking=['SWITCH_OFFENSIVE', 'ATTACK_TECH', 'STATUS', 'ATTACK_STRONG', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=4 motivo=nao sobrevive a um golpe
+[REGRA10] turno=4 vale=False pos_antes=None pos_depois=None
+[DECISAO] turno=4 intencao=ATTACK_STRONG obj=flamethrower pos=0 ranking=['ATTACK_STRONG', 'SWITCH_DEFENSIVE', 'SWITCH_OFFENSIVE']
+[HAZVALE] turno=5 motivo=sem impedimento
+[REGRA10] turno=5 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=5 intencao=ATTACK_PREDICTIVE obj=flamethrower pos=0 ranking=['ATTACK_PREDICTIVE', 'ATTACK_STRONG', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=6 motivo=sem impedimento
+[REGRA10] turno=6 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=6 intencao=ATTACK_STRONG obj=flamethrower pos=0 ranking=['ATTACK_STRONG', 'ATTACK_PREDICTIVE', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=7 motivo=sem impedimento
+[REGRA10] turno=7 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=7 intencao=ATTACK_STRONG obj=flamethrower pos=0 ranking=['ATTACK_STRONG', 'ATTACK_PREDICTIVE', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=8 motivo=sem impedimento
+[REGRA10] turno=8 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=8 intencao=ATTACK_PREDICTIVE obj=acrobatics pos=0 ranking=['ATTACK_PREDICTIVE', 'BUFF', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE', 'ATTACK_STRONG']
+[HAZVALE] turno=9 motivo=sem impedimento
+[REGRA10] turno=9 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=9 intencao=ATTACK_PREDICTIVE obj=acrobatics pos=0 ranking=['ATTACK_PREDICTIVE', 'BUFF', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE', 'ATTACK_STRONG']
+[HAZVALE] turno=10 motivo=sem impedimento
+[REGRA10] turno=10 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=10 intencao=ATTACK_PREDICTIVE obj=acrobatics pos=0 ranking=['ATTACK_PREDICTIVE', 'BUFF', 'HEAL', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=11 motivo=sem impedimento
+[REGRA10] turno=11 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=11 intencao=ATTACK_PREDICTIVE obj=acrobatics pos=0 ranking=['ATTACK_PREDICTIVE', 'BUFF', 'HEAL', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=12 motivo=sem impedimento
+[REGRA10] turno=12 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=12 intencao=BUFF obj=swordsdance pos=0 ranking=['BUFF', 'HEAL', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE', 'ATTACK_PREDICTIVE']
+[HAZVALE] turno=13 motivo=sem impedimento
+[REGRA10] turno=13 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=13 intencao=ATTACK_STRONG obj=gigadrain pos=0 ranking=['ATTACK_STRONG', 'ATTACK_TECH', 'SWITCH_OFFENSIVE', 'ATTACK_PREDICTIVE', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=14 motivo=sem impedimento
+[REGRA10] turno=14 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=14 intencao=ATTACK_TECH obj=sludgebomb pos=0 ranking=['ATTACK_TECH', 'ATTACK_STRONG', 'ATTACK_PREDICTIVE', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=15 motivo=sem impedimento
+[REGRA10] turno=15 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=15 intencao=ATTACK_TECH obj=sludgebomb pos=0 ranking=['ATTACK_TECH', 'SWITCH_OFFENSIVE', 'ATTACK_STRONG', 'BUFF', 'ATTACK_PREDICTIVE']
+[HAZVALE] turno=16 motivo=nao sobrevive a um golpe
+[REGRA10] turno=16 vale=False pos_antes=None pos_depois=None
+[DECISAO] turno=16 intencao=ATTACK_PREDICTIVE obj=gigadrain pos=0 ranking=['ATTACK_PREDICTIVE', 'ATTACK_STRONG', 'ATTACK_TECH', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=17 motivo=sem impedimento
+[REGRA10] turno=17 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=17 intencao=ATTACK_TECH obj=gigadrain pos=0 ranking=['ATTACK_TECH', 'SWITCH_OFFENSIVE', 'ATTACK_STRONG', 'ATTACK_PREDICTIVE', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=18 motivo=sem impedimento
+[REGRA10] turno=18 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=18 intencao=STATUS obj=trick pos=0 ranking=['STATUS', 'ATTACK_PREDICTIVE', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE', 'ATTACK_STRONG']
+[HAZVALE] turno=19 motivo=sem impedimento
+[REGRA10] turno=19 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=19 intencao=ATTACK_PREDICTIVE obj=dracometeor pos=0 ranking=['ATTACK_PREDICTIVE', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE', 'ATTACK_STRONG']
+[HAZVALE] turno=20 motivo=sem impedimento
+[REGRA10] turno=20 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=20 intencao=ATTACK_PREDICTIVE obj=dracometeor pos=0 ranking=['ATTACK_PREDICTIVE', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE', 'ATTACK_STRONG']
+[HAZVALE] turno=21 motivo=nao sobrevive a um golpe
+[REGRA10] turno=21 vale=False pos_antes=None pos_depois=None
+[DECISAO] turno=21 intencao=ATTACK_PREDICTIVE obj=dracometeor pos=0 ranking=['ATTACK_PREDICTIVE', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE', 'ATTACK_STRONG']
+[HAZVALE] turno=22 motivo=sem impedimento
+[REGRA10] turno=22 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=22 intencao=ATTACK_STRONG obj=thunderpunch pos=0 ranking=['ATTACK_STRONG', 'ATTACK_PIVOT', 'CLEAN_HAZARD', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=23 motivo=sem impedimento
+[REGRA10] turno=23 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=23 intencao=ATTACK_STRONG obj=thunderpunch pos=0 ranking=['ATTACK_STRONG', 'ATTACK_PIVOT', 'CLEAN_HAZARD', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=24 motivo=sem impedimento
+[REGRA10] turno=24 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=24 intencao=ATTACK_STRONG obj=thunderpunch pos=0 ranking=['ATTACK_STRONG', 'CLEAN_HAZARD', 'ATTACK_PREDICTIVE', 'SWITCH_DEFENSIVE', 'SWITCH_OFFENSIVE']
+[HAZVALE] turno=25 motivo=sem impedimento
+[REGRA10] turno=25 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=25 intencao=ATTACK_PIVOT obj=uturn pos=0 ranking=['ATTACK_PIVOT', 'ATTACK_STRONG', 'ATTACK_PREDICTIVE', 'CLEAN_HAZARD', 'SWITCH_OFFENSIVE']
+[HAZVALE] turno=26 motivo=nao sobrevive a um golpe
+[REGRA10] turno=26 vale=False pos_antes=None pos_depois=None
+[DECISAO] turno=26 intencao=ATTACK_STRONG obj=uturn pos=0 ranking=['ATTACK_STRONG', 'ATTACK_PREDICTIVE', 'ATTACK_PIVOT', 'CLEAN_HAZARD', 'SWITCH_DEFENSIVE']
+
+
+nada a comentar;
+
+[HAZVALE] turno=1 motivo=sem impedimento
+[REGRA10] turno=1 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=1 intencao=ATTACK_TECH obj=seismictoss pos=0 ranking=['ATTACK_TECH', 'STATUS', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE', 'ATTACK_STRONG']
+[HAZVALE] turno=2 motivo=sem impedimento
+[REGRA10] turno=2 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=2 intencao=ATTACK_TECH obj=seismictoss pos=0 ranking=['ATTACK_TECH', 'STATUS', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE', 'ATTACK_STRONG']
+[HAZVALE] turno=3 motivo=nao sobrevive a um golpe
+[REGRA10] turno=3 vale=False pos_antes=None pos_depois=None
+[DECISAO] turno=3 intencao=ATTACK_TECH obj=seismictoss pos=0 ranking=['ATTACK_TECH', 'STATUS', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE', 'ATTACK_STRONG']
+[HAZVALE] turno=4 motivo=sem impedimento
+[REGRA10] turno=4 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=4 intencao=ATTACK_TECH obj=bodypress pos=0 ranking=['ATTACK_TECH', 'SWITCH_OFFENSIVE', 'BUFF', 'SWITCH_DEFENSIVE', 'ATTACK_STRONG']
+[HAZVALE] turno=5 motivo=sem impedimento
+[REGRA10] turno=5 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=5 intencao=ATTACK_TECH obj=bodypress pos=0 ranking=['ATTACK_TECH', 'SWITCH_OFFENSIVE', 'HEAL', 'BUFF', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=6 motivo=nao sobrevive a um golpe
+[REGRA10] turno=6 vale=False pos_antes=None pos_depois=None
+[DECISAO] turno=6 intencao=ATTACK_STRONG obj=bodypress pos=0 ranking=['ATTACK_STRONG', 'SWITCH_OFFENSIVE', 'HEAL', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=7 motivo=sem impedimento
+[REGRA10] turno=7 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=7 intencao=ATTACK_TECH obj=discharge pos=0 ranking=['ATTACK_TECH', 'SWITCH_OFFENSIVE', 'ATTACK_STRONG', 'ATTACK_PREDICTIVE', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=8 motivo=nao sobrevive a um golpe
+[REGRA10] turno=8 vale=False pos_antes=None pos_depois=None
+[DECISAO] turno=8 intencao=ATTACK_TECH obj=discharge pos=0 ranking=['ATTACK_TECH', 'SWITCH_OFFENSIVE', 'HEAL', 'ATTACK_STRONG', 'ATTACK_PREDICTIVE']
+[HAZVALE] turno=9 motivo=sem impedimento
+[REGRA10] turno=9 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=9 intencao=STATUS obj=curse pos=0 ranking=['STATUS', 'ATTACK_STRONG', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=10 motivo=sem impedimento
+[REGRA10] turno=10 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=10 intencao=STATUS obj=curse pos=0 ranking=['STATUS', 'ATTACK_STRONG', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=11 motivo=sem impedimento
+[REGRA10] turno=11 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=11 intencao=STATUS obj=curse pos=0 ranking=['STATUS', 'ATTACK_STRONG', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=12 motivo=nao sobrevive a um golpe
+[REGRA10] turno=12 vale=False pos_antes=None pos_depois=None
+[DECISAO] turno=12 intencao=STATUS obj=curse pos=0 ranking=['STATUS', 'ATTACK_STRONG', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE']
+[HAZ] turno=13 golpe=toxicspikes alvo=TOXIC_SPIKES raw={} normalizado={}
+[HAZ] turno=13 golpe=toxicspikes alvo=TOXIC_SPIKES raw={} normalizado={}
+[HAZVALE] turno=13 motivo=sem impedimento
+[REGRA10] turno=13 vale=True pos_antes=4 pos_depois=0
+[HAZ] turno=13 golpe=toxicspikes alvo=TOXIC_SPIKES raw={} normalizado={}
+[HAZ] turno=13 golpe=toxicspikes alvo=TOXIC_SPIKES raw={} normalizado={}
+[DECISAO] turno=13 intencao=HAZARD obj=toxicspikes pos=0 ranking=['HAZARD', 'ATTACK_TECH', 'STAT_CLEAN', 'SWITCH_DEFENSIVE', 'SWITCH_OFFENSIVE']
+[HAZ] turno=14 golpe=toxicspikes alvo=TOXIC_SPIKES raw={<SideCondition.TOXIC_SPIKES: 22>: 1} normalizado={'TOXIC_SPIKES': 1}
+[HAZ] turno=14 golpe=toxicspikes alvo=TOXIC_SPIKES raw={<SideCondition.TOXIC_SPIKES: 22>: 1} normalizado={'TOXIC_SPIKES': 1}
+[HAZVALE] turno=14 motivo=sem impedimento
+[REGRA10] turno=14 vale=True pos_antes=2 pos_depois=0
+[HAZ] turno=14 golpe=toxicspikes alvo=TOXIC_SPIKES raw={<SideCondition.TOXIC_SPIKES: 22>: 1} normalizado={'TOXIC_SPIKES': 1}
+[HAZ] turno=14 golpe=toxicspikes alvo=TOXIC_SPIKES raw={<SideCondition.TOXIC_SPIKES: 22>: 1} normalizado={'TOXIC_SPIKES': 1}
+[DECISAO] turno=14 intencao=HAZARD obj=toxicspikes pos=0 ranking=['HAZARD', 'SWITCH_DEFENSIVE', 'ATTACK_TECH', 'STAT_CLEAN', 'SWITCH_OFFENSIVE']
+[HAZ] turno=15 golpe=toxicspikes alvo=TOXIC_SPIKES raw={<SideCondition.TOXIC_SPIKES: 22>: 2} normalizado={'TOXIC_SPIKES': 2}
+[HAZVALE] turno=15 motivo=nao sobrevive a um golpe
+[REGRA10] turno=15 vale=False pos_antes=None pos_depois=None
+[QUAR] SAIDA turno=15 tag=battle-gen9nationaldex-2675717313 par=('toxapex','thundurustherian') registo={('toxapex', 'thundurustherian'): 15}
+[DECISAO] turno=15 intencao=SWITCH_DEFENSIVE obj=garganacl pos=0 ranking=['SWITCH_DEFENSIVE', 'ATTACK_TECH', 'STAT_CLEAN', 'SWITCH_OFFENSIVE', 'ATTACK_STRONG']
+[HAZ] turno=16 golpe=stealthrock alvo=STEALTH_ROCK raw={<SideCondition.TOXIC_SPIKES: 22>: 2} normalizado={'TOXIC_SPIKES': 2}
+[HAZ] turno=16 golpe=stealthrock alvo=STEALTH_ROCK raw={<SideCondition.TOXIC_SPIKES: 22>: 2} normalizado={'TOXIC_SPIKES': 2}
+[HAZVALE] turno=16 motivo=nao sobrevive a um golpe
+[REGRA10] turno=16 vale=False pos_antes=4 pos_depois=4
+[DECISAO] turno=16 intencao=PROTECT obj=protect pos=0 ranking=['PROTECT', 'ATTACK_TECH', 'HEAL', 'SWITCH_DEFENSIVE', 'HAZARD']
+[HAZ] turno=17 golpe=stealthrock alvo=STEALTH_ROCK raw={<SideCondition.TOXIC_SPIKES: 22>: 2} normalizado={'TOXIC_SPIKES': 2}
+[HAZ] turno=17 golpe=stealthrock alvo=STEALTH_ROCK raw={<SideCondition.TOXIC_SPIKES: 22>: 2} normalizado={'TOXIC_SPIKES': 2}
+[HAZVALE] turno=17 motivo=nao sobrevive a um golpe
+[REGRA10] turno=17 vale=False pos_antes=4 pos_depois=4
+[HAZ] turno=17 golpe=stealthrock alvo=STEALTH_ROCK raw={<SideCondition.TOXIC_SPIKES: 22>: 2} normalizado={'TOXIC_SPIKES': 2}
+[HAZ] turno=17 golpe=stealthrock alvo=STEALTH_ROCK raw={<SideCondition.TOXIC_SPIKES: 22>: 2} normalizado={'TOXIC_SPIKES': 2}
+[DECISAO] turno=17 intencao=HAZARD obj=stealthrock pos=0 ranking=['HAZARD', 'ATTACK_TECH', 'PROTECT', 'HEAL', 'SWITCH_DEFENSIVE']
+[HAZ] turno=18 golpe=stealthrock alvo=STEALTH_ROCK raw={<SideCondition.TOXIC_SPIKES: 22>: 2, <SideCondition.STEALTH_ROCK: 19>: 17} normalizado={'TOXIC_SPIKES': 2, 'STEALTH_ROCK': 1}
+[HAZVALE] turno=18 motivo=sem impedimento
+[REGRA10] turno=18 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=18 intencao=ATTACK_TECH obj=saltcure pos=0 ranking=['ATTACK_TECH', 'SWITCH_OFFENSIVE', 'PROTECT', 'HEAL', 'SWITCH_DEFENSIVE']
+[HAZ] turno=19 golpe=toxicspikes alvo=TOXIC_SPIKES raw={<SideCondition.TOXIC_SPIKES: 22>: 2, <SideCondition.STEALTH_ROCK: 19>: 17} normalizado={'TOXIC_SPIKES': 2, 'STEALTH_ROCK': 1}
+[HAZVALE] turno=19 motivo=sem impedimento
+[REGRA10] turno=19 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=19 intencao=ATTACK_TECH obj=scald pos=0 ranking=['ATTACK_TECH', 'HEAL', 'STAT_CLEAN', 'ATTACK_STRONG', 'SWITCH_DEFENSIVE']
+
+Settar curse contra varias vezes seguidas contra um adversário que é forte contra a defesa especial até ele te matar é um erro (verificar a faixa de dano causado no ultimo acima de 1/3 da vida maxima não vale a pena buffar mais);
+
+[HAZ] turno=1 golpe=stealthrock alvo=STEALTH_ROCK raw={} normalizado={}
+[HAZVALE] turno=1 motivo=sem impedimento
+[REGRA10] turno=1 vale=True pos_antes=None pos_depois=None
+[QUAR] SAIDA turno=1 tag=battle-gen9nationaldex-2675719410 par=('tyranitar','chansey') registo={('tyranitar', 'chansey'): 1}
+[DECISAO] turno=1 intencao=SWITCH_OFFENSIVE obj=reuniclus pos=0 ranking=['SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE', 'ATTACK_STRONG']
+[HAZVALE] turno=2 motivo=sem impedimento
+[REGRA10] turno=2 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=2 intencao=ATTACK_STRONG obj=psyshock pos=0 ranking=['ATTACK_STRONG', 'BUFF', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=3 motivo=sem impedimento
+[REGRA10] turno=3 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=3 intencao=ATTACK_STRONG obj=focusblast pos=0 ranking=['ATTACK_STRONG', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE', 'BUFF']
+[HAZVALE] turno=4 motivo=sem impedimento
+[REGRA10] turno=4 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=4 intencao=ATTACK_STRONG obj=focusblast pos=0 ranking=['ATTACK_STRONG', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE', 'BUFF']
+[HAZVALE] turno=5 motivo=sem impedimento
+[REGRA10] turno=5 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=5 intencao=ATTACK_STRONG obj=focusblast pos=0 ranking=['ATTACK_STRONG', 'HEAL', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE', 'BUFF']
+[HAZVALE] turno=6 motivo=nao sobrevive a um golpe
+[REGRA10] turno=6 vale=False pos_antes=None pos_depois=None
+[DECISAO] turno=6 intencao=ATTACK_STRONG obj=focusblast pos=0 ranking=['ATTACK_STRONG', 'HEAL', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE', 'BUFF']
+[HAZVALE] turno=7 motivo=sem impedimento
+[REGRA10] turno=7 vale=True pos_antes=None pos_depois=None
+[QUAR] CONSULTA turno=7 tag=battle-gen9nationaldex-2675719410 par=('tyranitar', 'dondozo') turno_saida=None registo={('tyranitar', 'chansey'): 1}
+[QUAR] CONSULTA turno=7 tag=battle-gen9nationaldex-2675719410 par=('magnezone', 'dondozo') turno_saida=None registo={('tyranitar', 'chansey'): 1}
+[QUAR] CONSULTA turno=7 tag=battle-gen9nationaldex-2675719410 par=('clefable', 'dondozo') turno_saida=None registo={('tyranitar', 'chansey'): 1}
+[QUAR] CONSULTA turno=7 tag=battle-gen9nationaldex-2675719410 par=('toxapex', 'dondozo') turno_saida=None registo={('tyranitar', 'chansey'): 1}
+[QUAR] CONSULTA turno=7 tag=battle-gen9nationaldex-2675719410 par=('landorustherian', 'dondozo') turno_saida=None registo={('tyranitar', 'chansey'): 1}
+[QUAR] SAIDA turno=7 tag=battle-gen9nationaldex-2675719410 par=('reuniclus','dondozo') registo={('tyranitar', 'chansey'): 1, ('reuniclus', 'dondozo'): 7}
+[DECISAO] turno=7 intencao=SWITCH_OFFENSIVE obj=magnezone pos=0 ranking=['SWITCH_OFFENSIVE', 'HEAL', 'ATTACK_STRONG', 'ATTACK_PREDICTIVE', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=8 motivo=sem impedimento
+[REGRA10] turno=8 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=8 intencao=ATTACK_PREDICTIVE obj=flashcannon pos=0 ranking=['ATTACK_PREDICTIVE', 'ATTACK_STRONG', 'SWITCH_OFFENSIVE', 'ATTACK_PIVOT', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=9 motivo=sem impedimento
+[REGRA10] turno=9 vale=True pos_antes=None pos_depois=None
+[QUAR] CONSULTA turno=9 tag=battle-gen9nationaldex-2675719410 par=('tyranitar', 'gastrodon') turno_saida=None registo={('tyranitar', 'chansey'): 1, ('reuniclus', 'dondozo'): 7}
+[QUAR] CONSULTA turno=9 tag=battle-gen9nationaldex-2675719410 par=('reuniclus', 'gastrodon') turno_saida=None registo={('tyranitar', 'chansey'): 1, ('reuniclus', 'dondozo'): 7}
+[QUAR] CONSULTA turno=9 tag=battle-gen9nationaldex-2675719410 par=('clefable', 'gastrodon') turno_saida=None registo={('tyranitar', 'chansey'): 1, ('reuniclus', 'dondozo'): 7}
+[QUAR] CONSULTA turno=9 tag=battle-gen9nationaldex-2675719410 par=('toxapex', 'gastrodon') turno_saida=None registo={('tyranitar', 'chansey'): 1, ('reuniclus', 'dondozo'): 7}
+[QUAR] CONSULTA turno=9 tag=battle-gen9nationaldex-2675719410 par=('landorustherian', 'gastrodon') turno_saida=None registo={('tyranitar', 'chansey'): 1, ('reuniclus', 'dondozo'): 7}
+[QUAR] SAIDA turno=9 tag=battle-gen9nationaldex-2675719410 par=('magnezone','gastrodon') registo={('tyranitar', 'chansey'): 1, ('reuniclus', 'dondozo'): 7, ('magnezone', 'gastrodon'): 9}
+[DECISAO] turno=9 intencao=SWITCH_DEFENSIVE obj=clefable pos=0 ranking=['SWITCH_DEFENSIVE', 'ATTACK_STRONG', 'SWITCH_OFFENSIVE']
+[HAZVALE] turno=10 motivo=sem impedimento
+[HAZVALE] turno=10 motivo=sem impedimento
+[REGRA10] turno=10 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=10 intencao=ATTACK_STRONG obj=icebeam pos=0 ranking=['ATTACK_STRONG', 'BUFF', 'SWITCH_DEFENSIVE', 'SWITCH_OFFENSIVE']
+[HAZVALE] turno=11 motivo=sem impedimento
+[REGRA10] turno=11 vale=True pos_antes=None pos_depois=None
+[QUAR] CONSULTA turno=11 tag=battle-gen9nationaldex-2675719410 par=('tyranitar', 'gastrodon') turno_saida=None registo={('tyranitar', 'chansey'): 1, ('reuniclus', 'dondozo'): 7, ('magnezone', 'gastrodon'): 9}
+[QUAR] CONSULTA turno=11 tag=battle-gen9nationaldex-2675719410 par=('reuniclus', 'gastrodon') turno_saida=None registo={('tyranitar', 'chansey'): 1, ('reuniclus', 'dondozo'): 7, ('magnezone', 'gastrodon'): 9}
+[QUAR] CONSULTA turno=11 tag=battle-gen9nationaldex-2675719410 par=('magnezone', 'gastrodon') turno_saida=9 registo={('tyranitar', 'chansey'): 1, ('reuniclus', 'dondozo'): 7, ('magnezone', 'gastrodon'): 9}
+[QUAR] CONSULTA turno=11 tag=battle-gen9nationaldex-2675719410 par=('toxapex', 'gastrodon') turno_saida=None registo={('tyranitar', 'chansey'): 1, ('reuniclus', 'dondozo'): 7, ('magnezone', 'gastrodon'): 9}
+[QUAR] CONSULTA turno=11 tag=battle-gen9nationaldex-2675719410 par=('landorustherian', 'gastrodon') turno_saida=None registo={('tyranitar', 'chansey'): 1, ('reuniclus', 'dondozo'): 7, ('magnezone', 'gastrodon'): 9}
+[QUAR] SAIDA turno=11 tag=battle-gen9nationaldex-2675719410 par=('clefable','gastrodon') registo={('tyranitar', 'chansey'): 1, ('reuniclus', 'dondozo'): 7, ('magnezone', 'gastrodon'): 9, ('clefable', 'gastrodon'): 11}
+[DECISAO] turno=11 intencao=SWITCH_DEFENSIVE obj=landorustherian pos=0 ranking=['SWITCH_DEFENSIVE', 'ATTACK_STRONG', 'SWITCH_OFFENSIVE', 'BUFF']
+[HAZVALE] turno=12 motivo=sem impedimento
+[REGRA10] turno=12 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=12 intencao=ATTACK_STRONG obj=earthquake pos=0 ranking=['ATTACK_STRONG', 'STATUS', 'SWITCH_DEFENSIVE', 'ATTACK_PREDICTIVE', 'SWITCH_OFFENSIVE']
+[HAZVALE] turno=13 motivo=nao sobrevive a um golpe
+[REGRA10] turno=13 vale=False pos_antes=None pos_depois=None
+[DECISAO] turno=13 intencao=ATTACK_PREDICTIVE obj=smackdown pos=0 ranking=['ATTACK_PREDICTIVE', 'ATTACK_STRONG', 'SWITCH_DEFENSIVE', 'STATUS', 'SWITCH_OFFENSIVE']
+[HAZVALE] turno=14 motivo=nao sobrevive a um golpe
+[REGRA10] turno=14 vale=False pos_antes=None pos_depois=None
+[QUAR] CONSULTA turno=14 tag=battle-gen9nationaldex-2675719410 par=('tyranitar', 'dondozo') turno_saida=None registo={('tyranitar', 'chansey'): 1, ('reuniclus', 'dondozo'): 7, ('magnezone', 'gastrodon'): 9, ('clefable', 'gastrodon'): 11}
+[QUAR] CONSULTA turno=14 tag=battle-gen9nationaldex-2675719410 par=('reuniclus', 'dondozo') turno_saida=7 registo={('tyranitar', 'chansey'): 1, ('reuniclus', 'dondozo'): 7, ('magnezone', 'gastrodon'): 9, ('clefable', 'gastrodon'): 11}
+[QUAR] CONSULTA turno=14 tag=battle-gen9nationaldex-2675719410 par=('magnezone', 'dondozo') turno_saida=None registo={('tyranitar', 'chansey'): 1, ('reuniclus', 'dondozo'): 7, ('magnezone', 'gastrodon'): 9, ('clefable', 'gastrodon'): 11}
+[QUAR] CONSULTA turno=14 tag=battle-gen9nationaldex-2675719410 par=('toxapex', 'dondozo') turno_saida=None registo={('tyranitar', 'chansey'): 1, ('reuniclus', 'dondozo'): 7, ('magnezone', 'gastrodon'): 9, ('clefable', 'gastrodon'): 11}
+[QUAR] CONSULTA turno=14 tag=battle-gen9nationaldex-2675719410 par=('clefable', 'dondozo') turno_saida=None registo={('tyranitar', 'chansey'): 1, ('reuniclus', 'dondozo'): 7, ('magnezone', 'gastrodon'): 9, ('clefable', 'gastrodon'): 11}
+[QUAR] SAIDA turno=14 tag=battle-gen9nationaldex-2675719410 par=('landorustherian','dondozo') registo={('tyranitar', 'chansey'): 1, ('reuniclus', 'dondozo'): 7, ('magnezone', 'gastrodon'): 9, ('clefable', 'gastrodon'): 11, ('landorustherian', 'dondozo'): 14}
+[DECISAO] turno=14 intencao=SWITCH_DEFENSIVE obj=toxapex pos=0 ranking=['SWITCH_DEFENSIVE', 'ATTACK_STRONG', 'STATUS', 'SWITCH_OFFENSIVE', 'ATTACK_PREDICTIVE']
+[HAZVALE] turno=15 motivo=sem impedimento
+[HAZVALE] turno=15 motivo=sem impedimento
+[REGRA10] turno=15 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=15 intencao=STATUS obj=toxic pos=0 ranking=['STATUS', 'ATTACK_TECH', 'SWITCH_DEFENSIVE', 'SWITCH_OFFENSIVE', 'STAT_CLEAN']
+[HAZVALE] turno=16 motivo=sem impedimento
+[REGRA10] turno=16 vale=True pos_antes=None pos_depois=None
+[QUAR] CONSULTA turno=16 tag=battle-gen9nationaldex-2675719410 par=('tyranitar', 'gastrodon') turno_saida=None registo={('tyranitar', 'chansey'): 1, ('reuniclus', 'dondozo'): 7, ('magnezone', 'gastrodon'): 9, ('clefable', 'gastrodon'): 11, ('landorustherian', 'dondozo'): 14}
+[QUAR] CONSULTA turno=16 tag=battle-gen9nationaldex-2675719410 par=('reuniclus', 'gastrodon') turno_saida=None registo={('tyranitar', 'chansey'): 1, ('reuniclus', 'dondozo'): 7, ('magnezone', 'gastrodon'): 9, ('clefable', 'gastrodon'): 11, ('landorustherian', 'dondozo'): 14}
+[QUAR] CONSULTA turno=16 tag=battle-gen9nationaldex-2675719410 par=('magnezone', 'gastrodon') turno_saida=9 registo={('tyranitar', 'chansey'): 1, ('reuniclus', 'dondozo'): 7, ('magnezone', 'gastrodon'): 9, ('clefable', 'gastrodon'): 11, ('landorustherian', 'dondozo'): 14}
+[QUAR] CONSULTA turno=16 tag=battle-gen9nationaldex-2675719410 par=('landorustherian', 'gastrodon') turno_saida=None registo={('tyranitar', 'chansey'): 1, ('reuniclus', 'dondozo'): 7, ('magnezone', 'gastrodon'): 9, ('clefable', 'gastrodon'): 11, ('landorustherian', 'dondozo'): 14}
+[QUAR] CONSULTA turno=16 tag=battle-gen9nationaldex-2675719410 par=('clefable', 'gastrodon') turno_saida=11 registo={('tyranitar', 'chansey'): 1, ('reuniclus', 'dondozo'): 7, ('magnezone', 'gastrodon'): 9, ('clefable', 'gastrodon'): 11, ('landorustherian', 'dondozo'): 14}
+[QUAR] SAIDA turno=16 tag=battle-gen9nationaldex-2675719410 par=('toxapex','gastrodon') registo={('tyranitar', 'chansey'): 1, ('reuniclus', 'dondozo'): 7, ('magnezone', 'gastrodon'): 9, ('clefable', 'gastrodon'): 11, ('landorustherian', 'dondozo'): 14, ('toxapex', 'gastrodon'): 16}
+[DECISAO] turno=16 intencao=SWITCH_DEFENSIVE obj=reuniclus pos=0 ranking=['SWITCH_DEFENSIVE', 'SWITCH_OFFENSIVE', 'STAT_CLEAN', 'ATTACK_STRONG']
+[HAZVALE] turno=17 motivo=sem impedimento
+[REGRA10] turno=17 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=17 intencao=ATTACK_STRONG obj=earthquake pos=0 ranking=['ATTACK_STRONG', 'STATUS', 'ATTACK_PREDICTIVE', 'SWITCH_DEFENSIVE', 'SWITCH_OFFENSIVE']
+[HAZVALE] turno=18 motivo=sem impedimento
+[REGRA10] turno=18 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=18 intencao=SWITCH_OFFENSIVE obj=voltswitch pos=0 ranking=['SWITCH_OFFENSIVE', 'ATTACK_PREDICTIVE', 'ATTACK_STRONG', 'ATTACK_PIVOT', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=19 motivo=sem impedimento
+[REGRA10] turno=19 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=19 intencao=ATTACK_TECH obj=scald pos=0 ranking=['ATTACK_TECH', 'HEAL', 'STAT_CLEAN', 'SWITCH_DEFENSIVE', 'SWITCH_OFFENSIVE']
+[HAZVALE] turno=20 motivo=sem impedimento
+[REGRA10] turno=20 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=20 intencao=ATTACK_STRONG obj=scald pos=0 ranking=['ATTACK_STRONG', 'HEAL', 'SWITCH_OFFENSIVE', 'STAT_CLEAN', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=21 motivo=nao sobrevive a um golpe
+[REGRA10] turno=21 vale=False pos_antes=None pos_depois=None
+[DECISAO] turno=21 intencao=ATTACK_STRONG obj=scald pos=0 ranking=['ATTACK_STRONG', 'HEAL', 'SWITCH_OFFENSIVE', 'STAT_CLEAN', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=22 motivo=sem impedimento
+[REGRA10] turno=22 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=22 intencao=ATTACK_PREDICTIVE obj=thunderbolt pos=0 ranking=['ATTACK_PREDICTIVE', 'ATTACK_STRONG', 'SWITCH_DEFENSIVE', 'SWITCH_OFFENSIVE', 'ATTACK_PIVOT']
+[HAZVALE] turno=23 motivo=sem impedimento
+[REGRA10] turno=23 vale=True pos_antes=None pos_depois=None
+[QUAR] CONSULTA turno=23 tag=battle-gen9nationaldex-2675719410 par=('tyranitar', 'venusaur') turno_saida=None registo={('tyranitar', 'chansey'): 1, ('reuniclus', 'dondozo'): 7, ('magnezone', 'gastrodon'): 9, ('clefable', 'gastrodon'): 11, ('landorustherian', 'dondozo'): 14, ('toxapex', 'gastrodon'): 16}
+[QUAR] CONSULTA turno=23 tag=battle-gen9nationaldex-2675719410 par=('clefable', 'venusaur') turno_saida=None registo={('tyranitar', 'chansey'): 1, ('reuniclus', 'dondozo'): 7, ('magnezone', 'gastrodon'): 9, ('clefable', 'gastrodon'): 11, ('landorustherian', 'dondozo'): 14, ('toxapex', 'gastrodon'): 16}
+[QUAR] SAIDA turno=23 tag=battle-gen9nationaldex-2675719410 par=('magnezone','venusaur') registo={('tyranitar', 'chansey'): 1, ('reuniclus', 'dondozo'): 7, ('magnezone', 'gastrodon'): 9, ('clefable', 'gastrodon'): 11, ('landorustherian', 'dondozo'): 14, ('toxapex', 'gastrodon'): 16, ('magnezone', 'venusaur'): 23}
+[DECISAO] turno=23 intencao=SWITCH_OFFENSIVE obj=clefable pos=0 ranking=['SWITCH_OFFENSIVE', 'ATTACK_STRONG', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=24 motivo=nao sobrevive a um golpe
+[REGRA10] turno=24 vale=False pos_antes=None pos_depois=None
+[DECISAO] turno=24 intencao=HEAL obj=softboiled pos=0 ranking=['HEAL', 'ATTACK_STRONG', 'SWITCH_OFFENSIVE', 'ATTACK_PREDICTIVE', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=25 motivo=sem impedimento
+[REGRA10] turno=25 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=25 intencao=SWITCH_OFFENSIVE obj=voltswitch pos=0 ranking=['SWITCH_OFFENSIVE', 'ATTACK_PREDICTIVE', 'ATTACK_STRONG', 'ATTACK_PIVOT', 'SWITCH_DEFENSIVE']
+[HAZ] turno=26 golpe=stealthrock alvo=STEALTH_ROCK raw={} normalizado={}
+[HAZ] turno=26 golpe=stealthrock alvo=STEALTH_ROCK raw={} normalizado={}
+[HAZVALE] turno=26 motivo=nao sobrevive a um golpe
+[REGRA10] turno=26 vale=False pos_antes=0 pos_depois=0
+[HAZ] turno=26 golpe=stealthrock alvo=STEALTH_ROCK raw={} normalizado={}
+[HAZ] turno=26 golpe=stealthrock alvo=STEALTH_ROCK raw={} normalizado={}
+[DECISAO] turno=26 intencao=HAZARD obj=stealthrock pos=0 ranking=['HAZARD', 'ATTACK_STRONG', 'ATTACK_PREDICTIVE', 'SWITCH_DEFENSIVE', 'SWITCH_OFFENSIVE']
+[HAZ] turno=27 golpe=stealthrock alvo=STEALTH_ROCK raw={<SideCondition.STEALTH_ROCK: 19>: 26} normalizado={'STEALTH_ROCK': 1}
+[HAZVALE] turno=27 motivo=nao sobrevive a um golpe
+[REGRA10] turno=27 vale=False pos_antes=None pos_depois=None
+[DECISAO] turno=27 intencao=ATTACK_STRONG obj=crunch pos=0 ranking=['ATTACK_STRONG', 'ATTACK_PREDICTIVE', 'SWITCH_OFFENSIVE', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=28 motivo=sem impedimento
+[REGRA10] turno=28 vale=True pos_antes=None pos_depois=None
+[DECISAO] turno=28 intencao=ATTACK_PREDICTIVE obj=thunderbolt pos=0 ranking=['ATTACK_PREDICTIVE', 'ATTACK_STRONG', 'ATTACK_PIVOT', 'SWITCH_DEFENSIVE']
+[HAZVALE] turno=29 motivo=nao sobrevive a um golpe
+[REGRA10] turno=29 vale=False pos_antes=None pos_depois=None
+[DECISAO] turno=29 intencao=ATTACK_STRONG obj=thunderbolt pos=0 ranking=['ATTACK_STRONG', 'SWITCH_DEFENSIVE']
+
+======================================================================
+  Terminado. 0 vitorias em 4 batalhas do bot.
+======================================================================
+
+nada a declarar da ultima batalha;

@@ -1,0 +1,93 @@
+Data,Batalha,Turno,Lado,Especie,Tipos,Terastalizado,TeraType,Atk,Spa,Spe,Habilidade,Item,HP,EVENTO,Detalhe
+09:48:23,battle-gen9nationaldex-9248495,1,BOT,tapukoko,ELECTRIC/FAIRY,NAO,,115,95,130,electricsurge,electriumz,1.00,,
+09:48:23,battle-gen9nationaldex-9248495,1,HUMANO,greninja,DARK/WATER,NAO,,95,103,122,,unknown_item,1.00,,
+09:48:41,battle-gen9nationaldex-9248495,2,BOT,tapukoko,ELECTRIC/FAIRY,NAO,,115,95,130,electricsurge,,1.00,,
+09:48:41,battle-gen9nationaldex-9248495,2,HUMANO,landorustherian,FLYING/GROUND,NAO,,145,105,91,intimidate,unknown_item,1.00,ESPECIE_MUDOU+TIPOS_MUDARAM+STATS_MUDARAM+HABILIDADE_MUDOU,greninja -> landorustherian | DARK/WATER -> FLYING/GROUND | atk/spa/spe 95/103/122 -> 145/105/91 |  -> intimidate
+09:49:00,battle-gen9nationaldex-9248495,3,BOT,tapukoko,ELECTRIC/FAIRY,NAO,,115,95,130,electricsurge,,1.00,,
+09:49:00,battle-gen9nationaldex-9248495,3,HUMANO,landorustherian,FLYING/GROUND,NAO,,145,105,91,intimidate,,1.00,,
+09:49:08,battle-gen9nationaldex-9248495,3,BOT,tapukoko,ELECTRIC/FAIRY,NAO,,115,95,130,electricsurge,electriumz,0.00,,
+09:49:08,battle-gen9nationaldex-9248495,3,HUMANO,landorustherian,FLYING/GROUND,NAO,,145,105,91,intimidate,,1.00,,
+09:49:08,battle-gen9nationaldex-9248495,4,BOT,kartana,GRASS/STEEL,NAO,,181,59,109,beastboost,choicescarf,0.94,ESPECIE_MUDOU+TIPOS_MUDARAM+STATS_MUDARAM+HABILIDADE_MUDOU,tapukoko -> kartana | ELECTRIC/FAIRY -> GRASS/STEEL | atk/spa/spe 115/95/130 -> 181/59/109 | electricsurge -> beastboost
+09:49:08,battle-gen9nationaldex-9248495,4,HUMANO,landorustherian,FLYING/GROUND,NAO,,145,105,91,intimidate,,1.00,,
+09:49:21,battle-gen9nationaldex-9248495,5,BOT,kartana,GRASS/STEEL,NAO,,181,59,109,beastboost,choicescarf,0.94,,
+09:49:21,battle-gen9nationaldex-9248495,5,HUMANO,landorustherian,FLYING/GROUND,NAO,,145,105,91,intimidate,,0.57,,
+09:49:28,battle-gen9nationaldex-9248495,5,BOT,kartana,GRASS/STEEL,NAO,,181,59,109,beastboost,choicescarf,0.00,,
+09:49:28,battle-gen9nationaldex-9248495,5,HUMANO,landorustherian,FLYING/GROUND,NAO,,145,105,91,intimidate,,0.07,,
+09:49:28,battle-gen9nationaldex-9248495,6,BOT,mantine,FLYING/WATER,NAO,,40,80,70,waterabsorb,heavydutyboots,1.00,ESPECIE_MUDOU+TIPOS_MUDARAM+STATS_MUDARAM+HABILIDADE_MUDOU,kartana -> mantine | GRASS/STEEL -> FLYING/WATER | atk/spa/spe 181/59/109 -> 40/80/70 | beastboost -> waterabsorb
+09:49:28,battle-gen9nationaldex-9248495,6,HUMANO,landorustherian,FLYING/GROUND,NAO,,145,105,91,intimidate,,0.07,,
+09:49:39,battle-gen9nationaldex-9248495,6,BOT,mantine,FLYING/WATER,NAO,,40,80,70,waterabsorb,heavydutyboots,0.00,,
+09:49:39,battle-gen9nationaldex-9248495,6,HUMANO,landorustherian,FLYING/GROUND,NAO,,145,105,91,intimidate,,0.07,,
+09:49:39,battle-gen9nationaldex-9248495,7,BOT,heracross,BUG/FIGHTING,NAO,,125,40,85,moxie,heracronite,0.88,ESPECIE_MUDOU+TIPOS_MUDARAM+STATS_MUDARAM+HABILIDADE_MUDOU,mantine -> heracross | FLYING/WATER -> BUG/FIGHTING | atk/spa/spe 40/80/70 -> 125/40/85 | waterabsorb -> moxie
+09:49:39,battle-gen9nationaldex-9248495,7,HUMANO,landorustherian,FLYING/GROUND,NAO,,145,105,91,intimidate,,0.07,,
+09:49:58,battle-gen9nationaldex-9248495,8,BOT,heracrossmega,BUG/FIGHTING,NAO,,185,40,75,skilllink,heracronite,0.88,ESPECIE_MUDOU+STATS_MUDARAM+HABILIDADE_MUDOU,heracross -> heracrossmega | atk/spa/spe 125/40/85 -> 185/40/75 | moxie -> skilllink
+09:49:58,battle-gen9nationaldex-9248495,8,HUMANO,corviknight,FLYING/STEEL,NAO,,87,53,67,pressure,unknown_item,1.00,ESPECIE_MUDOU+TIPOS_MUDARAM+STATS_MUDARAM+HABILIDADE_MUDOU,landorustherian -> corviknight | FLYING/GROUND -> FLYING/STEEL | atk/spa/spe 145/105/91 -> 87/53/67 | intimidate -> pressure
+09:50:02,battle-gen9nationaldex-9248495,8,BOT,heracross,BUG/FIGHTING,NAO,,125,40,85,moxie,heracronite,0.00,ESPECIE_MUDOU+STATS_MUDARAM+HABILIDADE_MUDOU,heracrossmega -> heracross | atk/spa/spe 185/40/75 -> 125/40/85 | skilllink -> moxie
+09:50:02,battle-gen9nationaldex-9248495,8,HUMANO,corviknight,FLYING/STEEL,NAO,,87,53,67,pressure,unknown_item,0.00,,
+09:50:14,battle-gen9nationaldex-9248495,9,BOT,jirachi,PSYCHIC/STEEL,NAO,,100,100,100,serenegrace,leftovers,0.94,ESPECIE_MUDOU+TIPOS_MUDARAM+STATS_MUDARAM+HABILIDADE_MUDOU,heracross -> jirachi | BUG/FIGHTING -> PSYCHIC/STEEL | atk/spa/spe 125/40/85 -> 100/100/100 | moxie -> serenegrace
+09:50:14,battle-gen9nationaldex-9248495,9,HUMANO,magnezone,ELECTRIC/STEEL,NAO,,70,130,60,,unknown_item,1.00,ESPECIE_MUDOU+TIPOS_MUDARAM+STATS_MUDARAM+HABILIDADE_MUDOU,corviknight -> magnezone | FLYING/STEEL -> ELECTRIC/STEEL | atk/spa/spe 87/53/67 -> 70/130/60 | pressure -> 
+09:50:17,battle-gen9nationaldex-9248495,10,BOT,jirachi,PSYCHIC/STEEL,NAO,,100,100,100,serenegrace,leftovers,0.59,,
+09:50:17,battle-gen9nationaldex-9248495,10,HUMANO,magnezone,ELECTRIC/STEEL,NAO,,70,130,60,,unknown_item,0.93,,
+09:50:20,battle-gen9nationaldex-9248495,11,BOT,jirachi,PSYCHIC/STEEL,NAO,,100,100,100,serenegrace,leftovers,0.22,,
+09:50:20,battle-gen9nationaldex-9248495,11,HUMANO,magnezone,ELECTRIC/STEEL,NAO,,70,130,60,,unknown_item,0.86,,
+09:50:22,battle-gen9nationaldex-9248495,12,BOT,jirachi,PSYCHIC/STEEL,NAO,,100,100,100,serenegrace,leftovers,0.29,,
+09:50:22,battle-gen9nationaldex-9248495,12,HUMANO,magnezone,ELECTRIC/STEEL,NAO,,70,130,60,,unknown_item,0.79,,
+09:50:25,battle-gen9nationaldex-9248495,13,BOT,jirachi,PSYCHIC/STEEL,NAO,,100,100,100,serenegrace,leftovers,0.35,,
+09:50:25,battle-gen9nationaldex-9248495,13,HUMANO,magnezone,ELECTRIC/STEEL,NAO,,70,130,60,,unknown_item,0.72,,
+09:50:28,battle-gen9nationaldex-9248495,13,BOT,jirachi,PSYCHIC/STEEL,NAO,,100,100,100,serenegrace,leftovers,0.00,,
+09:50:28,battle-gen9nationaldex-9248495,13,HUMANO,magnezone,ELECTRIC/STEEL,NAO,,70,130,60,,unknown_item,0.65,,
+09:50:28,battle-gen9nationaldex-9248495,14,BOT,landorustherian,FLYING/GROUND,NAO,,145,105,91,intimidate,rockyhelmet,0.88,ESPECIE_MUDOU+TIPOS_MUDARAM+STATS_MUDARAM+HABILIDADE_MUDOU,jirachi -> landorustherian | PSYCHIC/STEEL -> FLYING/GROUND | atk/spa/spe 100/100/100 -> 145/105/91 | serenegrace -> intimidate
+09:50:28,battle-gen9nationaldex-9248495,14,HUMANO,magnezone,ELECTRIC/STEEL,NAO,,70,130,60,,unknown_item,0.65,,
+09:50:32,battle-gen9nationaldex-9248495,15,BOT,landorustherian,FLYING/GROUND,NAO,,145,105,91,intimidate,rockyhelmet,0.88,,
+09:50:32,battle-gen9nationaldex-9248495,15,HUMANO,lopunny,NORMAL,NAO,,76,54,105,,unknown_item,0.57,ESPECIE_MUDOU+TIPOS_MUDARAM+STATS_MUDARAM,magnezone -> lopunny | ELECTRIC/STEEL -> NORMAL | atk/spa/spe 70/130/60 -> 76/54/105
+09:50:34,battle-gen9nationaldex-9248495,16,BOT,landorustherian,FLYING/GROUND,NAO,,145,105,91,intimidate,rockyhelmet,0.75,,
+09:50:34,battle-gen9nationaldex-9248495,16,HUMANO,lopunny,NORMAL,NAO,,76,54,105,,unknown_item,0.41,,
+09:50:47,battle-gen9nationaldex-9248495,17,BOT,landorustherian,FLYING/GROUND,NAO,,145,105,91,intimidate,rockyhelmet,0.29,,
+09:50:47,battle-gen9nationaldex-9248495,17,HUMANO,tapufini,FAIRY/WATER,NAO,,75,95,85,,unknown_item,1.00,ESPECIE_MUDOU+TIPOS_MUDARAM+STATS_MUDARAM,lopunny -> tapufini | NORMAL -> FAIRY/WATER | atk/spa/spe 76/54/105 -> 75/95/85
+09:51:06,battle-gen9nationaldex-9248496,1,BOT,clefable,FAIRY,NAO,,70,95,60,magicguard,stickybarb,1.00,,
+09:51:06,battle-gen9nationaldex-9248496,1,HUMANO,greninja,DARK/WATER,NAO,,95,103,122,,unknown_item,1.00,,
+09:51:10,battle-gen9nationaldex-9248496,1,BOT,clefable,FAIRY,NAO,,70,95,60,magicguard,stickybarb,0.00,,
+09:51:10,battle-gen9nationaldex-9248496,1,HUMANO,greninja,POISON,NAO,,95,103,122,,unknown_item,1.00,TIPOS_MUDARAM,DARK/WATER -> POISON
+09:51:10,battle-gen9nationaldex-9248496,2,BOT,weavile,DARK/ICE,NAO,,120,45,125,pressure,choiceband,1.00,ESPECIE_MUDOU+TIPOS_MUDARAM+STATS_MUDARAM+HABILIDADE_MUDOU,clefable -> weavile | FAIRY -> DARK/ICE | atk/spa/spe 70/95/60 -> 120/45/125 | magicguard -> pressure
+09:51:10,battle-gen9nationaldex-9248496,2,HUMANO,greninja,POISON,NAO,,95,103,122,,unknown_item,1.00,,
+09:51:23,battle-gen9nationaldex-9248496,3,BOT,weavile,DARK/ICE,NAO,,120,45,125,pressure,choiceband,1.00,,
+09:51:23,battle-gen9nationaldex-9248496,3,HUMANO,lopunny,NORMAL,NAO,,76,54,105,,unknown_item,1.00,ESPECIE_MUDOU+TIPOS_MUDARAM+STATS_MUDARAM,greninja -> lopunny | POISON -> NORMAL | atk/spa/spe 95/103/122 -> 76/54/105
+09:51:30,battle-gen9nationaldex-9248496,4,BOT,weavile,DARK/ICE,NAO,,120,45,125,pressure,choiceband,0.61,,
+09:51:30,battle-gen9nationaldex-9248496,4,HUMANO,lopunny,FIGHTING/NORMAL,NAO,,136,54,135,scrappy,unknown_item,1.00,TIPOS_MUDARAM+STATS_MUDARAM+HABILIDADE_MUDOU,NORMAL -> FIGHTING/NORMAL | atk/spa/spe 76/54/105 -> 136/54/135 |  -> scrappy
+09:51:37,battle-gen9nationaldex-9248496,4,BOT,weavile,DARK/ICE,NAO,,120,45,125,pressure,choiceband,0.00,,
+09:51:37,battle-gen9nationaldex-9248496,4,HUMANO,lopunny,FIGHTING/NORMAL,NAO,,136,54,135,scrappy,unknown_item,1.00,,
+09:51:37,battle-gen9nationaldex-9248496,5,BOT,slowkinggalar,POISON/PSYCHIC,NAO,,65,110,30,regenerator,wateriumz,1.00,ESPECIE_MUDOU+TIPOS_MUDARAM+STATS_MUDARAM+HABILIDADE_MUDOU,weavile -> slowkinggalar | DARK/ICE -> POISON/PSYCHIC | atk/spa/spe 120/45/125 -> 65/110/30 | pressure -> regenerator
+09:51:37,battle-gen9nationaldex-9248496,5,HUMANO,lopunny,FIGHTING/NORMAL,NAO,,136,54,135,scrappy,unknown_item,1.00,,
+09:51:54,battle-gen9nationaldex-9248496,6,BOT,slowkinggalar,POISON/PSYCHIC,NAO,,65,110,30,regenerator,wateriumz,0.83,,
+09:51:54,battle-gen9nationaldex-9248496,6,HUMANO,corviknight,FLYING/STEEL,NAO,,87,53,67,pressure,unknown_item,1.00,ESPECIE_MUDOU+TIPOS_MUDARAM+STATS_MUDARAM+HABILIDADE_MUDOU,lopunny -> corviknight | FIGHTING/NORMAL -> FLYING/STEEL | atk/spa/spe 136/54/135 -> 87/53/67 | scrappy -> pressure
+09:52:06,battle-gen9nationaldex-9248496,7,BOT,slowkinggalar,POISON/PSYCHIC,NAO,,65,110,30,regenerator,wateriumz,0.83,,
+09:52:06,battle-gen9nationaldex-9248496,7,HUMANO,corviknight,FLYING/STEEL,NAO,,87,53,67,pressure,leftovers,0.82,,
+09:52:09,battle-gen9nationaldex-9248496,8,BOT,slowkinggalar,POISON/PSYCHIC,NAO,,65,110,30,regenerator,wateriumz,0.83,,
+09:52:09,battle-gen9nationaldex-9248496,8,HUMANO,corviknight,FLYING/STEEL,NAO,,87,53,67,pressure,leftovers,0.88,,
+09:52:11,battle-gen9nationaldex-9248496,9,BOT,slowkinggalar,POISON/PSYCHIC,NAO,,65,110,30,regenerator,wateriumz,0.83,,
+09:52:11,battle-gen9nationaldex-9248496,9,HUMANO,corviknight,FLYING/STEEL,NAO,,87,53,67,pressure,leftovers,0.94,,
+09:52:13,battle-gen9nationaldex-9248496,10,BOT,slowkinggalar,POISON/PSYCHIC,NAO,,65,110,30,regenerator,wateriumz,0.83,,
+09:52:13,battle-gen9nationaldex-9248496,10,HUMANO,corviknight,FLYING/STEEL,NAO,,87,53,67,pressure,leftovers,0.99,,
+09:52:16,battle-gen9nationaldex-9248496,11,BOT,slowkinggalar,POISON/PSYCHIC,NAO,,65,110,30,regenerator,wateriumz,0.83,,
+09:52:16,battle-gen9nationaldex-9248496,11,HUMANO,corviknight,FLYING/STEEL,NAO,,87,53,67,pressure,leftovers,1.00,,
+09:52:18,battle-gen9nationaldex-9248496,12,BOT,slowkinggalar,POISON/PSYCHIC,NAO,,65,110,30,regenerator,wateriumz,0.83,,
+09:52:18,battle-gen9nationaldex-9248496,12,HUMANO,corviknight,FLYING/STEEL,NAO,,87,53,67,pressure,leftovers,1.00,,
+09:52:22,battle-gen9nationaldex-9248496,13,BOT,slowkinggalar,POISON/PSYCHIC,NAO,,65,110,30,regenerator,wateriumz,0.83,,
+09:52:22,battle-gen9nationaldex-9248496,13,HUMANO,corviknight,FLYING/STEEL,NAO,,87,53,67,pressure,leftovers,1.00,,
+09:52:27,battle-gen9nationaldex-9248496,13,BOT,slowkinggalar,POISON/PSYCHIC,NAO,,65,110,30,regenerator,wateriumz,0.00,,
+09:52:27,battle-gen9nationaldex-9248496,13,HUMANO,corviknight,FLYING/STEEL,NAO,,87,53,67,pressure,leftovers,0.79,,
+09:52:27,battle-gen9nationaldex-9248496,14,BOT,latias,DRAGON/PSYCHIC,NAO,,80,110,110,levitate,latiasite,1.00,ESPECIE_MUDOU+TIPOS_MUDARAM+STATS_MUDARAM+HABILIDADE_MUDOU,slowkinggalar -> latias | POISON/PSYCHIC -> DRAGON/PSYCHIC | atk/spa/spe 65/110/30 -> 80/110/110 | regenerator -> levitate
+09:52:27,battle-gen9nationaldex-9248496,14,HUMANO,corviknight,FLYING/STEEL,NAO,,87,53,67,pressure,leftovers,0.79,,
+09:52:32,battle-gen9nationaldex-9248496,14,BOT,latias,DRAGON/PSYCHIC,NAO,,80,110,110,levitate,latiasite,0.00,,
+09:52:32,battle-gen9nationaldex-9248496,14,HUMANO,corviknight,FLYING/STEEL,NAO,,87,53,67,pressure,leftovers,0.55,,
+09:52:32,battle-gen9nationaldex-9248496,15,BOT,gastrodon,GROUND/WATER,NAO,,83,92,39,stormdrain,leftovers,1.00,ESPECIE_MUDOU+TIPOS_MUDARAM+STATS_MUDARAM+HABILIDADE_MUDOU,latias -> gastrodon | DRAGON/PSYCHIC -> GROUND/WATER | atk/spa/spe 80/110/110 -> 83/92/39 | levitate -> stormdrain
+09:52:32,battle-gen9nationaldex-9248496,15,HUMANO,corviknight,FLYING/STEEL,NAO,,87,53,67,pressure,leftovers,0.55,,
+09:52:35,battle-gen9nationaldex-9248496,15,BOT,gastrodon,GROUND/WATER,NAO,,83,92,39,stormdrain,leftovers,0.00,,
+09:52:35,battle-gen9nationaldex-9248496,15,HUMANO,corviknight,FLYING/STEEL,NAO,,87,53,67,pressure,leftovers,0.26,,
+09:52:35,battle-gen9nationaldex-9248496,16,BOT,corviknight,FLYING/STEEL,NAO,,87,53,67,pressure,rockyhelmet,1.00,ESPECIE_MUDOU+TIPOS_MUDARAM+STATS_MUDARAM+HABILIDADE_MUDOU,gastrodon -> corviknight | GROUND/WATER -> FLYING/STEEL | atk/spa/spe 83/92/39 -> 87/53/67 | stormdrain -> pressure
+09:52:35,battle-gen9nationaldex-9248496,16,HUMANO,corviknight,FLYING/STEEL,NAO,,87,53,67,pressure,leftovers,0.26,,
+09:52:40,battle-gen9nationaldex-9248496,17,BOT,corviknight,FLYING/STEEL,NAO,,87,53,67,pressure,rockyhelmet,1.00,,
+09:52:40,battle-gen9nationaldex-9248496,17,HUMANO,corviknight,FLYING/STEEL,NAO,,87,53,67,pressure,leftovers,0.82,,
+09:52:43,battle-gen9nationaldex-9248496,18,BOT,corviknight,FLYING/STEEL,NAO,,87,53,67,pressure,rockyhelmet,0.56,,
+09:52:43,battle-gen9nationaldex-9248496,18,HUMANO,corviknight,FLYING/STEEL,NAO,,87,53,67,pressure,leftovers,0.57,,
+09:52:48,battle-gen9nationaldex-9248496,19,BOT,corviknight,FLYING/STEEL,NAO,,87,53,67,pressure,rockyhelmet,0.09,,
+09:52:48,battle-gen9nationaldex-9248496,19,HUMANO,corviknight,FLYING/STEEL,NAO,,87,53,67,pressure,leftovers,0.31,,

@@ -1,0 +1,4 @@
+Batalhas,WinRate_Bloco,Vitorias,Derrotas,Estados_Q,Epsilon,Visitas_Est,Confianca,Reward,Ghost_Battles,Latencia_ms,Margem_Media,Duracao_Media,Auto_Ties,Tamanho_KB,Tempo_s
+200,68.00,136,64,0,0.0000,0.00,0.00,0,0,0.37,1.99,28.9,0,0,18
+400,66.50,133,67,0,0.0000,0.00,0.00,0,0,0.30,1.77,27.5,0,0,29
+600,65.50,131,69,0,0.0000,0.00,0.00,0,0,0.32,1.68,29.2,0,0,41

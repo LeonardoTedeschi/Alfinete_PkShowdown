@@ -28,7 +28,8 @@ from collections import deque
 
 class BlueBrain:
     def __init__(self, alpha=0.2, gamma=0.99, epsilon=0.40, min_epsilon=0.05, decay=0.005,
-                 novelty_k=30.0, decay_floor=0.01):
+                 novelty_k=30.0, decay_floor=0.01,
+                 memory_maxlen=400000, elite_maxlen=20000, elite_quota=0.10):
         self.initial_alpha = alpha
         self.min_alpha = 0.005
         self.alpha = alpha
@@ -119,7 +120,37 @@ class BlueBrain:
         self.visit_counts = {}
         self._qtable_lock = threading.Lock()
 
-        self.memory = deque(maxlen=15000)
+        # ==================================================================
+        # PROPOSTA A (11/09/2026): MEMORIA DIMENSIONADA AO ORCAMENTO
+        # ==================================================================
+        # HISTORIA. 15.000 cobria ~380 batalhas e o replay reciclava quase so o
+        # passado imediato — o contrario da razao de existir do replay, que e quebrar
+        # a correlacao entre amostras. Subiu para 40.000 (~1.000 batalhas) no ciclo
+        # v9/v6, quando o treino era de 400k e a Q-table tinha ~500 mil estados.
+        #
+        # O QUE MUDOU. O ciclo v10/v7 correu 500k batalhas e produziu 1,7 MILHOES de
+        # estados (6.49 A). Com `maxlen=40000` o buffer passou a cobrir 0,2% do
+        # treino: o replay via uma janela de 1.000 batalhas e reprocessava-a, sem
+        # nunca voltar a tocar em 99,8% da experiencia.
+        #
+        # A CORRECCAO E ESCALAR, NAO FIXAR. `memory_maxlen` passa a ser parametro do
+        # construtor e o treino calcula-o a partir do orcamento:
+        #
+        #     maxlen = batalhas_previstas * turnos_por_batalha * fraccao_de_cobertura
+        #
+        # Com 500k batalhas, ~30 decisoes por batalha e 2% de cobertura, da ~300.000.
+        # O default abaixo (400.000, ~2% de um ciclo de 660k) cobre o orcamento que a
+        # projeccao de cobertura sugere para o proximo ciclo (6.49 E).
+        #
+        # CUSTO. Uma transicao e `(state, action_str, reward, next_state)`: dois
+        # tuplos de 16 strings, uma string e um float. A ~40 bytes uteis por
+        # transicao mais overhead do deque, 400.000 ficam na ordem dos 16 a 60 MB de
+        # RAM. Contra os 653 MB que o `.pkl` ja ocupa aos 50k, e barato.
+        #
+        # O QUE ISTO NAO RESOLVE. Um buffer maior nao torna o replay mais inteligente:
+        # so lhe da de onde escolher. A escolha e das propostas B e C.
+        self.memory = deque(maxlen=memory_maxlen)
+        self.memory_maxlen = memory_maxlen
         self.batch_size = 512
 
         self.wr_history = []
@@ -133,9 +164,90 @@ class BlueBrain:
         # bonus = novelty_k / sqrt(visits). Ajustável por fase se necessário.
         self.novelty_k = novelty_k
 
+        # ------------------------------------------------------------------
         # Hall da Fama (memória de elite)
-        self.elite_memory = deque(maxlen=2000)
+        # ------------------------------------------------------------------
+        # CRITÉRIO REVISTO EM 25/08/2026. O anterior era
+        #     if final_ep_reward > self.episode_reward_max and > 100
+        # ou seja: só entrava quem BATESSE O RECORDE ABSOLUTO de sempre. Como a
+        # barreira só sobe, a memória enchia nas primeiras centenas de batalhas e
+        # congelava. Medido no ciclo v7/v4: 198 transições ao fim de 200.000
+        # batalhas, contra um maxlen de 2000.
+        #
+        # Isso não era inofensivo: 25% de cada lote de replay é sorteado da elite
+        # (ver replay()), logo um quarto da capacidade de consolidação passou 200 mil
+        # batalhas a reprocessar as mesmas ~198 transições — e transições do INÍCIO
+        # do treino, quando epsilon estava a 0,40 e a política era quase aleatória.
+        # O nome sugeria jogadas geniais; o conteúdo eram os primeiros episódios que
+        # por acaso bateram um recorde ainda baixo.
+        #
+        # Agora a barreira é um PERCENTIL MÓVEL das recompensas recentes: acompanha a
+        # melhoria do agente, a memória renova-se, e o maxlen passa a fazer sentido.
+        # ==================================================================
+        # PROPOSTA C (11/09/2026): CAPACIDADE E QUOTA DA ELITE
+        # ==================================================================
+        # O CRITERIO (percentil movel) ESTA CERTO e resolveu o congelamento de 25/08.
+        # O problema que resta e de CAPACIDADE e de PESO, e sao dois.
+        #
+        # CAPACIDADE. Com `maxlen=2000` e percentil 0,95 entram ~5% dos episodios. Em
+        # 500 mil batalhas sao ~25.000 candidatos para 2.000 lugares: a memoria e
+        # substituida ~12 vezes e no fim so contem material das ultimas ~40 mil
+        # batalhas. Isso faz o Hall da Fama convergir para "o que o agente ja faz bem
+        # AGORA", que e precisamente o que ele menos precisa de reforcar. A
+        # diversidade desaparece, e com ela o valor do replay de elite para material
+        # inedito.
+        #
+        # PESO. A quota era 25% FIXOS do lote. Com 512 de lote sao 128 transicoes de
+        # elite por chamada, 20 chamadas por bloco, 500 blocos: os mesmos episodios
+        # reprocessados mais de um milhao de vezes. E a mesma armadilha que o
+        # comentario de 25/08 descreve (198 transicoes recicladas durante 200 mil
+        # batalhas), so que com 2.000 em vez de 198 — o numero subiu, a PROPORCAO
+        # continuou errada.
+        #
+        # A CORRECCAO E DUPLA:
+        #   1. `elite_maxlen` sobe para 20.000 (~1 MB) e passa a ser parametro.
+        #   2. `elite_quota` desce de 0,25 para 0,10, e no replay e ainda limitada
+        #      pelo PESO REAL da elite na memoria (ver `replay_experience`), para a
+        #      quota nunca sobre-representar um conjunto pequeno.
+        self.elite_memory = deque(maxlen=elite_maxlen)
+        self.elite_maxlen = elite_maxlen
+        self.elite_quota = elite_quota
         self.active_battles_transitions = {}
+        self.recompensas_recentes = deque(maxlen=1000)
+        self.elite_percentil = 0.95      # entra quem estiver no topo dos 5% recentes
+        self.elite_min_amostras = 100    # abaixo disto não há percentil fiável
+        self.elite_reward_minimo = 100.0 # piso absoluto, herdado do critério antigo
+
+        # ==================================================================
+        # PROPOSTA B (11/09/2026): LIMIAR DE FRESCURA RELATIVO
+        # ==================================================================
+        # O `replay_experience` escolhe entre dois modos conforme a fraccao de
+        # transicoes em estados de 1 visita (`single_visit_ratio`):
+        #
+        #     ratio > 0,30  -> PRIORIZAR FRESCOS   (70% do lote no balde de 1 visita)
+        #     caso contrario -> CONSOLIDAR MADUROS (60% do lote no balde de 2 a 4)
+        #
+        # O limiar 0,30 foi calibrado com ~500 mil estados. Com os 1,7 MILHOES do
+        # v10/v7, 48% dos estados tem uma so visita e o ratio fica quase sempre acima
+        # de 0,30: **o modo de CONSOLIDAR quase nunca corre**. O replay passou o
+        # treino inteiro a perseguir novidade e nunca a fixar o que ja tinha sido
+        # visto, o que e consistente com a cobertura ter estagnado nos 70%.
+        #
+        # A CORRECCAO E TORNAR O LIMIAR RELATIVO AO PROPRIO TREINO. Guarda-se a media
+        # movel do ratio e compara-se o valor actual com ela:
+        #
+        #     ratio acima da media  -> a novidade esta a ACELERAR   -> priorizar frescos
+        #     ratio abaixo da media -> a novidade esta a ABRANDAR   -> consolidar
+        #
+        # Assim os dois modos correm em QUALQUER escala de Q-table, porque o criterio
+        # deixa de ser um valor absoluto e passa a ser a DERIVADA do proprio processo.
+        #
+        # O limiar absoluto fica como rede para o arranque: enquanto nao houver
+        # amostras suficientes para uma media fiavel, usa-se o comportamento antigo.
+        # Isso preserva o inicio do treino, que e onde o 0,30 estava bem calibrado.
+        self.single_visit_ratio_hist = deque(maxlen=50)
+        self.single_visit_ratio_min_amostras = 10
+        self.single_visit_ratio_limiar_absoluto = 0.30
 
         # Ações: base + variante _MEC (mecânica) para as não-switch
         self.base_actions = [
@@ -151,51 +263,211 @@ class BlueBrain:
             if "SWITCH" not in act:
                 self.actions.append(f"{act}_MEC")
 
-        self.current_phase = "maxdamage"
-
     # ======================================================================
     # DIAGNÓSTICO
     # ======================================================================
 
+    # ==================================================================
+    # METRICAS DE CONVERGENCIA (30/08/2026)
+    # ==================================================================
+    # PORQUE ESTE BLOCO EXISTE. A metrica de cobertura usada ate aqui era "visitas
+    # por estado" (media simples). Ela trata todos os estados como igualmente
+    # importantes, e NAO SAO: medido nos cerebros de 400k, 16,7% dos estados
+    # absorvem 90,7% de todas as decisoes, e a mediana de visitas e 3 enquanto o
+    # estado mais visitado tem 61.967.
+    #
+    # A media simples respondia "quantas visitas tem um estado tipico". A pergunta
+    # que decide e outra: "que fracao dos TURNOS o agente joga em terreno que ja
+    # conhece". Sao numeros muito diferentes e levam a decisoes opostas sobre
+    # orcamento.
+    #
+    # E cobertura, por si so, nao e convergencia. Q-Learning converge quando a
+    # POLITICA (o argmax) para de mudar, nao quando os valores param de se mexer:
+    # a tabela pode continuar a somar valor a todas as accoes sem que a decisao
+    # mude nunca, e pode ter valores quase estaveis com a decisao a oscilar entre
+    # duas accoes empatadas. Por isso ha snapshot de politica.
+
+    LIMIAR_MADURO = 20          # visitas a partir das quais um estado "conta"
+
     def inspect_brain(self):
-        """Saúde/convergência da Q-table: (total_visitas, média, taxa_confiança)."""
+        """(total_visitas, media_simples, taxa_confianca). MANTIDO POR COMPATIBILIDADE.
+
+        As duas ultimas medidas estao DESPROMOVIDAS e nao devem guiar decisoes:
+
+          media_simples   trata todos os estados por igual; ver o bloco acima
+          taxa_confianca  e so `visit_counts >= 3`, um limiar tao baixo que mede
+                          cobertura rasa e nao confianca nenhuma. O nome prometia
+                          mais do que entregava (56,1% no Blue de 400k).
+
+        Use `metricas_convergencia()`.
+        """
         total_states = len(self.q_table)
         if total_states == 0:
             return 0, 0.0, 0.0
         total_visits = 0
         confident_states = 0
-        confidence_threshold = 3
-        for state, actions in self.q_table.items():
+        for state in self.q_table:
             state_visits = self.visit_counts.get(state, 1)
             total_visits += state_visits
-            if state_visits >= confidence_threshold:
+            if state_visits >= 3:
                 confident_states += 1
-        avg_visits = total_visits / total_states
-        confidence_rate = (confident_states / total_states) * 100.0
-        return total_visits, avg_visits, confidence_rate
+        return total_visits, total_visits / total_states, (confident_states / total_states) * 100.0
+
+    def _snapshot_politica(self):
+        """{estado_maduro: (idx_argmax, q_do_argmax)}. Base do churn e do delta.
+
+        SO ESTADOS MADUROS, de proposito e por duas razoes. A primeira e memoria:
+        guardar a tabela inteira duplicaria o .pkl (165 MB no Blue de 400k); os
+        maduros sao 16,7% dos estados e um tuplo pequeno cada. A segunda e sentido:
+        um estado com duas visitas TEM de mudar de argmax, isso e aprendizado e nao
+        instabilidade. Contar essas mudancas afogaria o sinal em ruido esperado.
+        """
+        snap = {}
+        for estado, q in self.q_table.items():
+            if self.visit_counts.get(estado, 0) >= self.LIMIAR_MADURO:
+                idx = int(np.argmax(q))
+                snap[estado] = (idx, float(q[idx]))
+        return snap
+
+    def metricas_convergencia(self, guardar_snapshot=True):
+        """Metricas de convergencia do bloco. Devolve dict.
+
+          cobertura_ponderada   % das DECISOES tomadas em estados maduros.
+                                Substitui "visitas por estado". Medido: 90,7% no
+                                Blue de 400k, com so 16,7% dos estados maduros.
+          descoberta_por_turno  estados novos por DECISAO desde a chamada anterior.
+                                E a unidade certa: uma batalha sao ~40 decisoes,
+                                logo "500 novos por 1000 batalhas" sao 0,0125 por
+                                turno, ou seja 98,75% dos turnos caem em terreno
+                                conhecido.
+          churn_politica        % da MASSA DE DECISAO cujo argmax mudou desde o
+                                bloco anterior. E O CRITERIO DE CONVERGENCIA:
+                                ponderado por visitas, porque mudar a decisao num
+                                estado de 60.000 visitas nao vale o mesmo que num
+                                de 21.
+          delta_q               |dQ| medio do argmax, ponderado por visitas e
+                                normalizado pelo teto. Complementa o churn: mostra
+                                se os valores ainda se movem quando a decisao ja
+                                nao muda.
+          margem_decisao        distancia media entre a melhor e a segunda melhor
+                                accao nos estados maduros, ponderada. Margem larga
+                                significa que o ruido que resta nao chega para
+                                virar a politica.
+          estados_maduros       contagem absoluta.
+
+        No primeiro bloco de uma sessao nao ha snapshot anterior, e `churn_politica`
+        e `delta_q` saem a -1.0 para nao serem confundidos com zero (que seria
+        "convergiu").
+        """
+        n = len(self.q_table)
+        if n == 0:
+            return {"cobertura_ponderada": 0.0, "descoberta_por_turno": 0.0,
+                    "churn_politica": -1.0, "delta_q": -1.0,
+                    "margem_decisao": 0.0, "estados_maduros": 0}
+
+        total_visitas = 0
+        massa_madura = 0
+        maduros = 0
+        soma_margem = 0.0
+        peso_margem = 0
+        for estado, q in self.q_table.items():
+            v = self.visit_counts.get(estado, 0)
+            total_visitas += v
+            if v >= self.LIMIAR_MADURO:
+                maduros += 1
+                massa_madura += v
+                if len(q) >= 2:
+                    ordenado = np.partition(q, -2)
+                    soma_margem += (float(ordenado[-1]) - float(ordenado[-2])) * v
+                    peso_margem += v
+
+        # Descoberta por DECISAO, e nao por batalha nem por bloco.
+        anterior_estados = getattr(self, "_conv_estados_ant", None)
+        anterior_visitas = getattr(self, "_conv_visitas_ant", None)
+        if anterior_estados is None or anterior_visitas is None:
+            descoberta = -1.0
+        else:
+            d_visitas = total_visitas - anterior_visitas
+            descoberta = (n - anterior_estados) / d_visitas if d_visitas > 0 else 0.0
+
+        snap = self._snapshot_politica()
+        antigo = getattr(self, "_conv_snapshot", None)
+        if not antigo:
+            churn, delta = -1.0, -1.0
+        else:
+            peso, mudou, soma_delta = 0, 0, 0.0
+            teto = max(1.0, float(self._teto_q()))
+            for estado, (idx, qv) in snap.items():
+                anterior = antigo.get(estado)
+                if anterior is None:
+                    continue          # estado que amadureceu agora: sem termo de comparacao
+                v = self.visit_counts.get(estado, 0)
+                peso += v
+                if anterior[0] != idx:
+                    mudou += v
+                soma_delta += abs(qv - anterior[1]) * v
+            churn = (mudou / peso * 100.0) if peso else -1.0
+            delta = (soma_delta / peso / teto * 100.0) if peso else -1.0
+
+        if guardar_snapshot:
+            self._conv_snapshot = snap
+            self._conv_estados_ant = n
+            self._conv_visitas_ant = total_visitas
+
+        return {
+            "cobertura_ponderada": (massa_madura / total_visitas * 100.0) if total_visitas else 0.0,
+            "descoberta_por_turno": descoberta,
+            "churn_politica": churn,
+            "delta_q": delta,
+            "margem_decisao": (soma_margem / peso_margem) if peso_margem else 0.0,
+            "estados_maduros": maduros,
+        }
+
+    def histograma_visitas(self, limiares=(1, 2, 3, 5, 10, 20, 30, 57, 100, 200, 500, 1000)):
+        """Massa de decisao acumulada por limiar de visitas. Para o dashboard.
+
+        Substitui os quatro baldes fixos, que escondiam a forma real da cauda: a
+        mediana e 3 visitas e o topo tem 61.967, quatro ordens de grandeza.
+        """
+        if not self.visit_counts:
+            return {}
+        v = np.fromiter(self.visit_counts.values(), dtype=np.int64)
+        tot = max(1, int(v.sum()))
+        return {lim: {"estados": int((v >= lim).sum()),
+                      "massa_pct": float(v[v >= lim].sum()) / tot * 100.0}
+                for lim in limiares}
 
     # ======================================================================
     # FASES DE CURRÍCULO (mantido; o treino atual usa só "instinct")
     # ======================================================================
 
-    def enter_phase(self, phase_name):
-        phase_config = {
-            "maxdamage": {"epsilon_start": 0.40, "epsilon_min": 0.05, "decay": 0.005, "alpha_start": 0.15, "alpha_min": 0.005},
-            "instinct":  {"epsilon_start": 0.40, "epsilon_min": 0.03, "decay": 0.002, "alpha_start": 0.15, "alpha_min": 0.005},
-            "selfplay":  {"epsilon_start": 0.30, "epsilon_min": 0.01, "decay": 0.002, "alpha_start": 0.10, "alpha_min": 0.001},
-        }
-        if phase_name in phase_config:
-            cfg = phase_config[phase_name]
-            self.initial_epsilon = cfg["epsilon_start"]
-            self.epsilon = cfg["epsilon_start"]
-            self.min_epsilon = cfg["epsilon_min"]
-            self.epsilon_decay = cfg["decay"]
-            self.initial_alpha = cfg["alpha_start"]
-            self.min_alpha = cfg["alpha_min"]
-            self.alpha = self.initial_alpha
-            self.current_phase = phase_name
-            self.memory.clear()
-            print(f"[CÉREBRO] Fase: {phase_name.upper()} | Eps: {self.epsilon:.2f}->{self.min_epsilon:.2f} | Alpha: {self.alpha:.3f}")
+    # REMOVIDO EM 25/08/2026: `enter_phase()` e `current_phase`.
+    # Resíduo do curriculum learning (maxdamage -> instinct -> selfplay), abandonado
+    # há muito. O método nunca era chamado e `current_phase` ficava fixo em
+    # "maxdamage", o que aparecia no print de carregamento do cérebro como
+    # "Fase: MAXDAMAGE" e confundia quem lia o terminal.
+
+    def _limiar_elite(self):
+        """Barreira de entrada no Hall da Fama: percentil movel das recompensas
+        recentes, nunca abaixo do piso absoluto.
+
+        SUBSTITUI o criterio antigo `final_ep_reward > self.episode_reward_max`, que
+        exigia BATER O RECORDE ABSOLUTO de sempre. Como essa barreira so subia, a
+        memoria de elite enchia nas primeiras centenas de batalhas e congelava:
+        medido nos cerebros v7/v4, 198 transicoes ao fim de 200.000 batalhas, contra
+        um maxlen de 2000. E 25% de cada lote de replay era sorteado dessas 198,
+        quase todas do inicio do treino, com epsilon a 0,40 e politica quase
+        aleatoria.
+
+        Com menos de `elite_min_amostras` batalhas registadas ainda nao ha
+        distribuicao para calcular percentil, e usa-se so o piso. Isso deixa a
+        memoria arrancar no inicio do treino sem ficar presa depois.
+        """
+        if len(self.recompensas_recentes) < self.elite_min_amostras:
+            return self.elite_reward_minimo
+        ordenadas = sorted(self.recompensas_recentes)
+        idx = min(int(len(ordenadas) * self.elite_percentil), len(ordenadas) - 1)
+        return max(ordenadas[idx], self.elite_reward_minimo)
 
     def _update_global_records(self, final_reward):
         if final_reward > self.episode_reward_max:
@@ -237,6 +509,11 @@ class BlueBrain:
 
     def _calculate_potential(self, battle, state):
         """Potencial tático estático Phi = Phi_guerra (macro) + Phi_batalha (micro)."""
+        # 15 e o MINIMO historico, nao a dimensao atual (16 desde 30/08/2026). Fica
+        # como piso porque todos os indices lidos aqui vao ate 14: a dimensao de banco
+        # foi acrescentada no FIM justamente para nao deslocar nenhum deles. Se
+        # alguma vez se inserir uma dimensao a MEIO, este numero e estes indices tem
+        # de ser revistos em conjunto.
         if not state or len(state) < 15:
             return 0.0
         phi_guerra = 0.0
@@ -270,8 +547,22 @@ class BlueBrain:
             phi_guerra += self.peso_hazard      # hazards no campo INIMIGO: bom
 
 
-        field_vals = {"FIELD_SWEEP": 20.0, "FIELD_POWER": 15.0, "FIELD_SPEED": 15.0,
-                      "FIELD_DEFENSE": 10.0, "FIELD_HOSTILE": -20.0}
+        # ATUALIZADO 30/08/2026 para os SEIS baldes de `get_weather_state` (a
+        # primeira versao tinha cinco; `FIELD_OURS` foi separado em `_OFF` e
+        # `_DEF` na mesma data, ver 6.44 do ESTADO_DO_PROJETO.md). Os
+        # nomes antigos (FIELD_POWER, FIELD_SPEED, FIELD_DEFENSE, FIELD_HOSTILE,
+        # FIELD_NEUTRAL) DEIXARAM DE EXISTIR: se ficassem aqui, o `.get` devolvia
+        # sempre 0.0 e o shaping de campo tornava-se codigo morto sem dar erro
+        # nenhum. E o mesmo padrao de falha silenciosa que ja custou caro no projeto.
+        #
+        # Com 6 baldes (revisao de 30/08/2026) cada nome antigo tem herdeiro directo:
+        #   FIELD_OURS_OFF  <- os +15 de FIELD_POWER e FIELD_SPEED
+        #   FIELD_OURS_DEF  <- os +10 de FIELD_DEFENSE
+        #   FIELD_THEIRS    <- os -20 de FIELD_HOSTILE, e passa a cobrir tambem a
+        #                      vantagem do adversario, que ate aqui valia 0.0
+        #   FIELD_SHARED    <- 0.0 por definicao: serve aos dois, ou a nenhum
+        field_vals = {"FIELD_SWEEP": 20.0, "FIELD_OURS_OFF": 15.0,
+                      "FIELD_OURS_DEF": 10.0, "FIELD_THEIRS": -20.0}
         phi_guerra += field_vals.get(str(state[5]).upper(), 0.0)
 
         my_role = str(state[0]).upper()
@@ -366,7 +657,10 @@ class BlueBrain:
         # Fim de batalha: julgamento para o Hall da Fama
         if battle.won or battle.lost:
             final_ep_reward = self.active_battles_reward.pop(tag, 0.0)
-            if final_ep_reward > self.episode_reward_max and final_ep_reward > 100:
+            # A recompensa entra na distribuição ANTES do julgamento, para o percentil
+            # refletir também esta batalha.
+            self.recompensas_recentes.append(final_ep_reward)
+            if final_ep_reward >= self._limiar_elite():
                 for t in self.active_battles_transitions.get(tag, []):
                     self.elite_memory.append(t)
             self.active_battles_transitions.pop(tag, None)
@@ -718,12 +1012,33 @@ class BlueBrain:
         if len(self.q_table) < self.replay_min_states:
             return
 
-        # 25% do lote focado na Elite (comportamento genial descoberto)
+        # ==============================================================
+        # PROPOSTA C: QUOTA DA ELITE, LIMITADA PELO PESO REAL
+        # ==============================================================
+        # Era `int(self.batch_size * 0.25)` fixo. Ver a nota extensa no construtor:
+        # 25% de um conjunto pequeno significa reprocessar os mesmos episodios
+        # milhoes de vezes.
+        #
+        # Agora ha DOIS tectos e vale o MENOR:
+        #   1. `elite_quota` (default 0,10), o tecto de desenho
+        #   2. o PESO REAL da elite na memoria, `len(elite)/len(memory)`, multiplicado
+        #      por um factor de sobre-amostragem
+        #
+        # O segundo e o que impede a sobre-representacao de forma automatica: se a
+        # elite for 0,5% da memoria, ela nao pode ocupar 25% do lote so porque a
+        # constante o permitia. O factor 4 da-lhe ainda um peso QUATRO VEZES superior
+        # ao que teria por amostragem uniforme — continua a ser PER injetado, e nao
+        # amostragem neutra — mas passa a ser um multiplo do peso real em vez de um
+        # valor arbitrario.
+        FACTOR_SOBREAMOSTRAGEM_ELITE = 4.0
         elite_sample = []
-        target_elite = int(self.batch_size * 0.25)
-        if len(self.elite_memory) > 0:
+        if len(self.elite_memory) > 0 and len(self.memory) > 0:
+            peso_real = len(self.elite_memory) / float(len(self.memory))
+            quota = min(self.elite_quota, peso_real * FACTOR_SOBREAMOSTRAGEM_ELITE)
+            target_elite = int(self.batch_size * quota)
             take_elite = min(target_elite, len(self.elite_memory))
-            elite_sample = random.sample(list(self.elite_memory), take_elite)
+            if take_elite > 0:
+                elite_sample = random.sample(list(self.elite_memory), take_elite)
 
         target_normal = self.batch_size - len(elite_sample)
 
@@ -749,8 +1064,28 @@ class BlueBrain:
 
         single_visit_ratio = single_visit_count / len(memory_list)
 
-        # Se há muitos estados frescos, prioriza-os; senão, consolida os maduros.
-        if single_visit_ratio > 0.30:
+        # ==============================================================
+        # PROPOSTA B: O LIMIAR E RELATIVO AO PROPRIO TREINO
+        # ==============================================================
+        # Ver a nota extensa no construtor. Em resumo: o limiar absoluto de 0,30 foi
+        # calibrado com ~500 mil estados e, com 1,7 milhoes, o ratio fica quase
+        # sempre acima dele — o modo de CONSOLIDAR nunca corria.
+        #
+        # Compara-se agora o ratio com a MEDIA MOVEL dos ultimos 50 valores. Enquanto
+        # nao houver amostras que cheguem, usa-se o limiar absoluto, que preserva o
+        # arranque do treino (onde o 0,30 estava bem calibrado).
+        #
+        # O registo e feito DEPOIS da comparacao, para o valor actual nao contaminar
+        # a media contra a qual esta a ser comparado.
+        if len(self.single_visit_ratio_hist) >= self.single_visit_ratio_min_amostras:
+            media = sum(self.single_visit_ratio_hist) / len(self.single_visit_ratio_hist)
+            priorizar_frescos = single_visit_ratio > media
+        else:
+            priorizar_frescos = single_visit_ratio > self.single_visit_ratio_limiar_absoluto
+        self.single_visit_ratio_hist.append(single_visit_ratio)
+
+        # Se a novidade esta a ACELERAR, persegue-a; se esta a ABRANDAR, consolida.
+        if priorizar_frescos:
             target_1v = int(target_normal * 0.70)
             target_2to4 = int(target_normal * 0.20)
         else:
@@ -816,9 +1151,12 @@ class BlueBrain:
     def decide_action(self, state, valid_actions, ranking_list):
         # Reposta a cada decisao; o agente le-a logo a seguir (ver update_feedback).
         self.ultima_foi_exploratoria = False
-        is_mec_avail = False
-        if isinstance(state, tuple) and len(state) >= 14:
-            is_mec_avail = (state[13] == "MEC_AVAIL")
+
+        # REMOVIDO EM 24/08/2026: aqui existia `is_mec_avail = (state[13] ==
+        # "MEC_AVAIL")`, atribuido e NUNCA LIDO. Alem de morto, tinha o indice
+        # errado: em shared/state.py o campo de mecanica e o INDICE 7; o 13 e
+        # `opp_hazards`, cujos valores sao SET e CLEAR. Se voltar a ser preciso:
+        # state[7] == "MEC_AVAIL".
 
         abs_state = self._get_abstract_state(state)
 
@@ -942,12 +1280,22 @@ class BlueBrain:
         data = {
             "q_table": self.q_table,
             "visit_counts": self.visit_counts,
+            # SNAPSHOT DE POLITICA (30/08/2026). Cada sessao de 10k e um PROCESSO
+            # novo; sem persistir, o churn saia sempre a -1.0 no primeiro bloco de
+            # cada sessao e perdiam-se 40 pontos de medida por ciclo. Sao ~72k
+            # tuplos no Blue de 400k, uns poucos MB face aos 165 MB da Q-table.
+            "conv_snapshot": getattr(self, "_conv_snapshot", None),
+            "conv_estados_ant": getattr(self, "_conv_estados_ant", None),
+            "conv_visitas_ant": getattr(self, "_conv_visitas_ant", None),
             "epsilon": self.epsilon,
             "alpha": self.alpha,
-            "current_phase": self.current_phase,
             "episode_reward_max": self.episode_reward_max,
             "episode_reward_min": self.episode_reward_min,
             "elite_memory": self.elite_memory,
+            # Distribuicao recente: sem ela, ao retomar uma sessao o percentil da
+            # elite recomecava do zero e as primeiras 100 batalhas voltavam a usar
+            # so o piso absoluto, poluindo a memoria com episodios medianos.
+            "recompensas_recentes": self.recompensas_recentes,
         }
         try:
             with open(temp_filepath, "wb") as f:
@@ -964,16 +1312,43 @@ class BlueBrain:
                     data = pickle.load(f)
                 self.q_table = data.get("q_table", {})
                 self.visit_counts = data.get("visit_counts", {})
-                saved_phase = data.get("current_phase", "maxdamage")
-                if saved_phase == self.current_phase:
-                    self.epsilon = data.get("epsilon", self.epsilon)
-                    self.alpha = data.get("alpha", self.alpha)
-                else:
-                    print(f"[CÉREBRO] Nova fase ({saved_phase} -> {self.current_phase}).")
+                # `.get` com None: um .pkl anterior a 30/08/2026 nao tem estas
+                # chaves, e nesse caso o churn arranca a -1.0 no primeiro bloco,
+                # que e o comportamento correcto (nao ha com que comparar).
+                self._conv_snapshot = data.get("conv_snapshot", None)
+                self._conv_estados_ant = data.get("conv_estados_ant", None)
+                self._conv_visitas_ant = data.get("conv_visitas_ant", None)
+                # ARMADILHA REMOVIDA EM 25/08/2026: aqui comparava-se `current_phase`
+                # com a fase gravada e, se diferissem, o epsilon e o alpha guardados
+                # eram DESCARTADOS silenciosamente. Um .pkl com outra fase gravada
+                # fazia o treino recomecar com epsilon a 0,40 sobre uma tabela madura,
+                # arruinando a corrida sem qualquer erro visivel. O epsilon e o alpha
+                # sao agora sempre restaurados.
+                self.epsilon = data.get("epsilon", self.epsilon)
+                self.alpha = data.get("alpha", self.alpha)
                 self.episode_reward_max = data.get("episode_reward_max", -9999.0)
                 self.episode_reward_min = data.get("episode_reward_min", 9999.0)
-                self.elite_memory = data.get("elite_memory", deque(maxlen=2000))
-                print(f"[CÉREBRO] Carregado. Estados: {len(self.q_table)} | Fase: {self.current_phase.upper()} | Elite: {len(self.elite_memory)}")
+                # ==========================================================
+                # COMPATIBILIDADE COM .pkl ANTERIORES A 11/09/2026
+                # ==========================================================
+                # O `deque` guardado no ficheiro traz o `maxlen` COM QUE FOI CRIADO.
+                # Atribui-lo directamente faria o Hall da Fama continuar preso em
+                # 2.000 mesmo depois de `elite_maxlen` subir para 20.000 — a
+                # alteracao existiria no codigo e NAO correria, que e o modo de
+                # falha dominante deste projecto.
+                #
+                # Por isso reconstroi-se sempre o deque com o maxlen ACTUAL,
+                # preservando o conteudo. Se o maxlen novo for menor, o `deque`
+                # descarta os mais antigos, que e o comportamento correcto.
+                _elite = data.get("elite_memory", [])
+                self.elite_memory = deque(_elite, maxlen=self.elite_maxlen)
+                _rec = data.get("recompensas_recentes", [])
+                self.recompensas_recentes = deque(_rec, maxlen=1000)
+                # `memory` nao e guardada no .pkl (e volatil por desenho), logo o
+                # `memory_maxlen` novo aplica-se sozinho a partir do proximo bloco.
+                print(f"[CÉREBRO] Carregado. Estados: {len(self.q_table)} | "
+                      f"Elite: {len(self.elite_memory)} | "
+                      f"Limiar elite: {self._limiar_elite():.0f}")
                 return True
             except Exception as e:
                 print(f"[CÉREBRO] Erro ao carregar: {e}")

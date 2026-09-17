@@ -28,6 +28,9 @@ from poke_env.player import Player
 from instinct import build_instinct
 from qlearning.brain import BlueBrain
 
+from shared.mechanics import marcar_uso, mega_valido, z_move_valido
+
+
 
 class TabularAgent(Player):
     """Base para agentes de Q-Learning tabular. Não usar diretamente — subclassear."""
@@ -39,6 +42,9 @@ class TabularAgent(Player):
                  **kwargs):
         super().__init__(*args, **kwargs)
         self.instinct = build_instinct()
+        # Executor substituivel: o Ash troca-o por um ExecutorMinimo. Os agentes que
+        # nao o substituem usam o do instinto (comportamento anterior inalterado).
+        self.executor = self.instinct.executor
         self.brain = BlueBrain(alpha=alpha, gamma=gamma, epsilon=epsilon,
                                min_epsilon=min_epsilon, decay=decay)
         self.brain_file = brain_file
@@ -81,7 +87,11 @@ class TabularAgent(Player):
         if tag not in self._history:
             self._history[tag] = {
                 'state': None, 'last_action': None, 'prev_action': None,
-                'last_was_exploratory': False,
+                'last_was_exploratory': False, 'buffs_consecutivos': 0,
+                # Chaves de 04/09/2026: ver o bloco de paridade no `choose_move`.
+                'wish_turno': None, 'diferido_turno': None,
+                'predicao_turno': None, 'predicao_alvo': None,
+                'predicao_alvo_anterior': None, 'predicoes_falhadas': 0,
                 'last_active_id': None, 'last_opponent_id': None,
                 'last_opp_hp': None, 'last_my_hp': None,
                 'last_action_was_damage': False,
@@ -93,15 +103,58 @@ class TabularAgent(Player):
     def teampreview(self, battle):
         # Ambos usam o mesmo lead: faz parte do "ambiente", não do instinto tático
         # de combate. Manter igual evita enviesar a comparação pela ordem de time.
-        return self.instinct.executor.get_best_lead(battle)
+        return self.executor.get_best_lead(battle)
 
     def choose_move(self, battle):
         try:
             hist = self._get_history(battle)
 
             if battle.force_switch or (battle.active_pokemon and battle.active_pokemon.fainted):
-                switch = self.instinct.executor.get_post_faint_switch(battle)
-                self._learn_from_previous(battle, hist, current_state=None)
+                # ==========================================================
+                # BUG CORRIGIDO 30/08/2026 — TRANSICAO APRENDIDA A DOBRAR
+                # ==========================================================
+                # Aqui existia `self._learn_from_previous(battle, hist,
+                # current_state=None)`. Este ramo devolve SEM escrever no `hist`, e o
+                # `_learn_from_previous` tambem nao limpa `hist['state']` nem
+                # `hist['last_action']` (no caminho normal eles sao sobrescritos logo
+                # a seguir pela decisao nova; aqui nao ha decisao nova).
+                #
+                # Resultado: a MESMA transicao era aprendida DUAS VEZES.
+                #
+                #   turno T    decidimos; hist guarda (s_T, a_T)
+                #   turno T+1  o nosso Pokemon desmaiou -> troca forcada
+                #              aprende (s_T, a_T) e incrementa visit_counts[s_T]
+                #              devolve sem tocar no hist
+                #   turno T+1  decisao real, depois da troca
+                #              aprende (s_T, a_T) OUTRA VEZ, incrementa OUTRA VEZ
+                #
+                # MEDIDO nos cerebros de 400k: 15.836.687 visitas contra 13.525.600
+                # turnos reais. A diferenca sao 5,78 por batalha, das quais 1 e o
+                # update terminal legitimo e 4,78 sao este bug — exatamente o numero
+                # de Pokemon nossos que desmaiam numa batalha tipica. O Green da 4,79.
+                #
+                # O DANO NAO ERA O CONTADOR. A transicao duplicada e precisamente
+                # aquela em que o nosso Pokemon morreu, ou seja a de recompensa mais
+                # negativa da tabela. Aplicar o update duas vezes equivale a DOBRAR o
+                # alfa no sinal mais forte do sistema, o que enviesa os dois agentes
+                # para jogo defensivo. As duas recompensas nem sequer eram iguais: a
+                # primeira chamada passava `current_state=None`, logo sem valor
+                # futuro, e a segunda passava o estado real.
+                #
+                # Efeito colateral: `_get_abstract_state(None)` criava uma entrada
+                # `None` na Q-table (confirmada nos dois .pkl, 36 zeros, 0 visitas).
+                # Inofensiva, mas inflacionava `Estados_Q` em 1.
+                #
+                # PORQUE NAO APRENDER AQUI, EM VEZ DE APRENDER UMA SO VEZ. A proxima
+                # decisao real aprende a mesma transicao com o estado que DE FACTO
+                # resultou, em vez de com `None`, e a recompensa ja inclui o faint. E
+                # a formulacao correcta do TD: um alvo com valor futuro real em vez de
+                # zero. Aprender aqui com `next_state=None` deitaria fora o
+                # bootstrapping da transicao mais informativa da batalha.
+                #
+                # A recompensa TERMINAL nao se perde: e aplicada por
+                # `_aplicar_update_terminal`, chamado do `_battle_finished_callback`.
+                switch = self.executor.get_post_faint_switch(battle)
                 return self.create_order(switch) if switch else self.choose_random_move(battle)
 
             if not battle.active_pokemon or not battle.opponent_active_pokemon:
@@ -114,6 +167,14 @@ class TabularAgent(Player):
             _t_dec = time.perf_counter()
 
             valid_actions, ranking_list = self._get_actions_and_ranking(battle, hist)
+
+            # A guarda mecanica anti-ciclo que aqui existia foi REMOVIDA (ver 6.16
+            # do ESTADO_DO_PROJETO.md): tratava o sintoma, nao a causa. O ciclo de
+            # trocas e resolvido a montante, pela quarentena por matchup em
+            # instinct/execution.py. O modulo shared/anti_loop.py NUNCA EXISTIU no
+            # projeto: o import estava comentado e o construtor rebentava com
+            # `NameError: name 'AntiLoop' is not defined`, abortando qualquer treino
+            # a primeira repeticao do orquestrador.
             if not valid_actions:
                 return self.choose_random_move(battle)
 
@@ -123,18 +184,119 @@ class TabularAgent(Player):
             foi_exploratoria = getattr(self.brain, "ultima_foi_exploratoria", False)
             base_action, mechanic = action_tuple
 
-            obj = self.instinct.executor.get_best_execution_object(base_action, battle, hist)
+            # `atalho_de_pivo=False`: SWITCH SIGNIFICA SWITCH (03/09/2026).
+            #
+            # O atalho de pivo do executor devolvia um U-turn ou Volt Switch
+            # quando a intencao era `SWITCH_*`. Para o cerebro isso e trocar de
+            # accao pelas costas da Q-table: a recompensa ia para `SWITCH_*` num
+            # turno em que a accao executada foi na pratica um `ATTACK_PIVOT`, e
+            # quando o pivo era imune (Volt Switch contra Terra) nem troca havia
+            # — dano zero, sem sair de campo, e a penalizacao registada nas duas
+            # accoes de troca. Esteve activo em todos os ciclos ate ao v9/v6.
+            #
+            # `ATTACK_PIVOT` E UMA ACCAO DO ESPACO, e `physics.classify_move`
+            # devolve-a para os cinco golpes de pivo (Teleport incluido). Se sair
+            # de campo atacando for a jogada certa, o cerebro aprende a escolhe-la
+            # pelo rotulo dela, com a recompensa no sitio certo. Nao se perde
+            # repertorio, ganha-se a distincao entre duas accoes.
+            #
+            # O InstinctBot mantem o atalho (nao tem Q-table para corromper) e
+            # por isso o default do parametro e True: nenhum outro chamador muda.
+            obj = self.executor.get_best_execution_object(
+                base_action, battle, hist, atalho_de_pivo=False)
 
             self._decision_time_sum += (time.perf_counter() - _t_dec)
             self._decision_count += 1
 
-            # Antes de sobrescrever last_action, preserva-a como prev_action — a regra
-            # anti-Protect-consecutivo no masking lê 'prev_action'. Sem isto, essa
-            # regra ficava inerte (a chave nunca era escrita na refatoração).
+            # `prev_action` guarda a acao de DOIS turnos atras (last_action antes de
+            # ser sobrescrita). Escrita aqui, e ATUALMENTE SEM NENHUM LEITOR.
+            #
+            # HISTORIA (30/08/2026). Esta chave foi criada para a regra anti-Protect
+            # do masking, que lia `prev_action` OU `last_action`. Essa leitura estava
+            # ERRADA: banía o Protect por dois turnos em vez de um, e por isso
+            # proibia a sequencia Protect -> ataque -> Protect, que tem 100% de
+            # sucesso porque o contador zera ao usar outro golpe. Corrigido no
+            # instinto v17 (ver 6.38): o masking passou a ler so `last_action`.
+            #
+            # A chave FICA, de proposito. Remove-la obrigaria a mexer em tres
+            # ficheiros (`base_agent`, `instinct_player`, `masking`) e a paridade
+            # exata das chaves entre o TabularAgent e o InstinctBot e o que garante
+            # que a regua e os agentes tem o MESMO comportamento (6.32). Custa uma
+            # atribuicao por turno e evita esse risco.
+            #
+            # SE ALGUEM VOLTAR A LE-LA: confirmar primeiro que a semantica pretendida
+            # e mesmo "dois turnos atras" e nao "o turno anterior". Foi essa confusao
+            # que produziu o bug original.
             hist['prev_action'] = hist.get('last_action')
             hist['state'] = state
             hist['last_action'] = action_tuple
             hist['last_was_exploratory'] = foi_exploratoria
+            # Contador para a regra da corrida de buffs (ver instinct/policy.py).
+            if str(base_action).replace("_MEC", "") == "BUFF":
+                hist['buffs_consecutivos'] = int(hist.get('buffs_consecutivos', 0)) + 1
+            else:
+                hist['buffs_consecutivos'] = 0
+
+            # ==========================================================
+            # WISH E PREDITIVO (04/09/2026) — PARIDADE OBRIGATORIA
+            # ==========================================================
+            # ESTE BLOCO TEM DE SER IDENTICO AO DO `instinct_player`. Duas regras
+            # novas leem estas chaves do historico:
+            #
+            #   `masking`, filtro do Wish  -> `wish_turno`
+            #   `policy`, Regra Global 11  -> `predicoes_falhadas`
+            #
+            # O poke-env NAO expoe o Wish (verificado em 04/09: a string nao
+            # existe no `pokemon.py` nem nas `SideCondition`), logo o dado tem de
+            # ser nosso. Se so o InstinctBot o escrevesse, o Blue e o Green
+            # ficariam com a poda do Wish e a penalizacao da previsao DESLIGADAS,
+            # e isso seria uma ASSIMETRIA NAO DECLARADA entre a regua e os
+            # agentes — exactamente o que a 6.32 diz que invalida a comparacao.
+            # As tres assimetrias legitimas do projeto sao escolhidas por
+            # PARAMETRO no executor, nunca por esquecimento no historico.
+            try:
+                _acao = str(base_action).replace("_MEC", "")
+                _opp = getattr(battle.opponent_active_pokemon, "species", None)
+
+                if _acao in ("STATUS", "HEAL") and any(
+                        getattr(m, "id", "") == "wish"
+                        for m in (getattr(battle, "available_moves", None) or [])):
+                    hist['wish_turno'] = battle.turn
+
+                if _acao == "ATTACK_PREDICTIVE":
+                    hist['predicao_turno'] = battle.turn
+                    hist['predicao_alvo'] = _opp
+                    if hist.get('predicao_alvo_anterior') == _opp:
+                        hist['predicoes_falhadas'] = int(hist.get('predicoes_falhadas', 0)) + 1
+                    else:
+                        hist['predicoes_falhadas'] = 0
+                    hist['predicao_alvo_anterior'] = _opp
+                elif hist.get('predicao_alvo_anterior') != _opp:
+                    hist['predicoes_falhadas'] = 0
+                    hist['predicao_alvo_anterior'] = None
+            except Exception:
+                pass
+
+            # GOLPES DE EFEITO DIFERIDO (04/09/2026). Registados pelo GOLPE
+            # EXECUTADO e nao pela intencao: a intencao diz o que se queria, o
+            # `obj` diz o que saiu. O registo do Wish por intencao (acima) fica,
+            # como rede; este e o preciso.
+            #
+            # PORQUE TEM DE SER NOSSO: Wish, Future Sight e Doom Desire sao SLOT
+            # conditions. O poke-env nao as expoe nem em `side_conditions` nem em
+            # `effects` (verificado em 04/09: a string "WISH" nao existe no
+            # `pokemon.py`). Sem memoria propria, nenhum filtro os pode ver.
+            #
+            # Observado: `futuresight` em quatro turnos seguidos, com
+            # "But it failed!" nos dois ultimos.
+            try:
+                _gid = getattr(obj, "id", None)
+                if _gid == "wish":
+                    hist['wish_turno'] = battle.turn
+                elif _gid in ("futuresight", "doomdesire"):
+                    hist['diferido_turno'] = battle.turn
+            except Exception:
+                pass
 
             # --- Instrumentacao para LETALIDADE POR DANO OBSERVADO ---
             # Guarda quem estava em campo e o HP do oponente ANTES da acao. No turno
@@ -277,6 +439,17 @@ class TabularAgent(Player):
         # Liberta o historico desta batalha (senao o dicionario cresce 1 entrada por
         # batalha e nunca encolhe).
         self._history.pop(tag, None)
+        try:
+            self.executor.limpar_saidas(tag)
+        except AttributeError:
+            pass
+        try:
+            # REGRA 7 (impasse): o historico de posicoes desta batalha. Sem esta
+            # limpeza o dicionario cresce uma entrada por batalha e nunca encolhe —
+            # em 400.000 batalhas seria fuga de memoria.
+            self.instinct.policy.limpar_posicoes(tag)
+        except AttributeError:
+            pass
 
         # Duração: nº de turnos até a decisão.
         self._battle_durations.append(getattr(battle, "turn", 0))
@@ -376,13 +549,24 @@ class TabularAgent(Player):
     # helpers de ação partilhados
     # ------------------------------------------------------------------
 
-    # FASE 1: mecânicas (tera/mega/z/dynamax) DESATIVADAS.
-    # Motivo: a validade de Z-move depende do golpe concreto E do item Z que o Pokémon
-    # carrega, e determiná-la de forma fiável pela API do poke-env é frágil (o servidor
-    # rejeita ordens como "Swords Dance como Z-move"). Para a Fase 1 (eficiência de
-    # treino) a mecânica não é essencial e a sua ausência é IGUAL para todos os agentes,
-    # mantendo a comparação justa. Reintroduzir mecânica é trabalho para uma fase later.
-    ENABLE_MECHANICS = False
+    # FASE 2 (24/08/2026): mecânicas LIGADAS. Ver 6.19 do ESTADO_DO_PROJETO.md.
+    #
+    # Cobre MEGA EVOLUÇÃO e Z-MOVE. A Terastalização está BANIDA no gen9nationaldex
+    # por Terastal Clause, logo `battle.can_tera` é sempre falso e o ramo tera do
+    # _order_with_mechanic nunca dispara neste formato.
+    #
+    # Porque se liga agora: sem mecânica, a validação cobria um subconjunto do
+    # formato. A Mega altera tipagem, stats, velocidade e por vezes o eixo
+    # físico/especial, tocando em 5 das 15 dimensões do estado. Testar a abstração
+    # sem ela era testá-la em condições mais fáceis do que a realidade do formato.
+    #
+    # Custo assumido: o espaço de ações passa de 19 para 36 quando há mecânica
+    # disponível. Mitigado pela HERANÇA _MEC em brain.decide_action, onde a variante
+    # _MEC arranca com o valor já aprendido pela ação base em vez de zero.
+    #
+    # A fragilidade original do Z-move continua tratada: o _order_with_mechanic
+    # verifica golpe a golpe se existe versão Z e, na dúvida, joga sem mecânica.
+    ENABLE_MECHANICS = True
 
     def _expand_with_mechanic(self, categories, battle):
         """Filtra as categorias para o espaço de ações do cérebro.
@@ -435,17 +619,19 @@ class TabularAgent(Player):
                 return self.create_order(obj, terastallize=True)
 
             # Mega evolução: propriedade do Pokémon, não do golpe — disponível = ok.
-            if getattr(battle, "can_mega_evolve", False):
+            if mega_valido(battle):
+                # marcar ANTES de devolver: desde poke-env 0.12.0 o item permanece
+                # depois do uso, logo deixou de servir de guarda de uso unico.
+                marcar_uso(battle, "mega")
                 return self.create_order(obj, mega=True)
 
-            # Z-move: SÓ se este golpe tiver versão Z válida.
-            if getattr(battle, "can_z_move", False):
-                move_supports_z = getattr(obj, "can_z_move", None)
-                if move_supports_z is None:
-                    # fallback: consulta a lista de golpes Z disponíveis, se existir
-                    move_supports_z = move_in("available_z_moves")
-                if move_supports_z:
-                    return self.create_order(obj, z_move=True)
+            # Z-move: SÓ se este Pokémon carregar o cristal do tipo certo.
+            # CORRIGIDO 24/08/2026: usava obj.can_z_move, que é propriedade do golpe
+            # nos dados e não da situação. Produzia "[Invalid choice]" e custava o
+            # turno. Ver z_move_valido no topo do ficheiro.
+            if z_move_valido(obj, battle):
+                marcar_uso(battle, "z")
+                return self.create_order(obj, z_move=True)
 
             # Dynamax: aplica-se a qualquer golpe quando disponível.
             if getattr(battle, "can_dynamax", False):

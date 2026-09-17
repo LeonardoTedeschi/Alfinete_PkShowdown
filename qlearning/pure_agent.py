@@ -29,7 +29,16 @@ class PureAgent(TabularAgent):
         # Sem instinto: todas as categorias abstratas LEGAIS neste turno, sem poda.
         categories = set()
         for move in battle.available_moves:
-            cat = self.instinct.physics.classify_move(move)
+            # CONTEXTO (29/08/2026), pela mesma razao do masking e do executor: sem
+            # ele, a categoria com que a acao entra na Q-table pode nao ser a do golpe
+            # que o executor acaba por jogar, e a recompensa ia parar a acao errada.
+            #
+            # Isto NAO da conhecimento tatico ao Green: e a mesma NOMEACAO de acoes
+            # que ele ja fazia, agora correta. Mantem-se a nota de paridade acima —
+            # usar a mesma representacao de dados que o Blue e o que torna a
+            # comparacao justa; usa-la mal e que a tornava enviesada.
+            cat = self.instinct.physics.classify_move(
+                move, battle.opponent_active_pokemon, battle)
             if cat.name in self.brain.actions:
                 categories.add(cat.name)
         if battle.available_switches:

@@ -2,9 +2,10 @@
 scripts/train_green.py — treino individual do agente GREEN (Q-puro).
 
 Configuração:
-  - Máx. de batalhas do treino : 10.000
-  - Salvamento (log + cérebro) : a cada 1.000 batalhas
-  - Batalhas simultâneas       : 3
+  - Máx. de batalhas POR EXECUÇÃO : 10.000
+  - Orçamento do ciclo            : 400.000 (40 repetições, via treino_continuo)
+  - Salvamento (log + cérebro)    : a cada 1.000 batalhas
+  - Batalhas simultâneas          : 5
   - Timer do servidor DESLIGADO (evita derrotas por timeout de decisão; auto-ties
     residuais não geram recompensa terminal, logo não poluem a Q-table)
   - Ao fim: gera gráfico de treino + dashboard de inspeção do cérebro
@@ -48,14 +49,66 @@ MIN_ALPHA = 0.02
 GAMMA = 0.99
 EPSILON_START = 0.40
 MIN_EPSILON = 0.05     # nunca menos de 5% de exploracao (aprendizado continuo)
-EPSILON_DECAY = 0.002
-DECAY_FLOOR = 0.003    # piso de decaimento do epsilon por bloco (calibrado para treinos de 200k)
+EPSILON_DECAY = 0.00046
+# CALIBRACAO DO CALENDARIO DO EPSILON (27/08/2026)
+# ------------------------------------------------
+# A formula em brain.decay_epsilon e SUBTRATIVA POR BLOCO, com piso e teto:
+#
+#     actual_decay = max(DECAY_FLOOR, EPSILON_DECAY * min(3, 3/discovery_rate))
+#     epsilon -= actual_decay
+#
+# Cedo, com muitos estados novos, o multiplicador e minusculo e o PISO manda.
+# Tarde, o multiplicador satura em 3 e vale o TETO (3 * EPSILON_DECAY).
+#
+# ATENCAO: o decaimento e POR BLOCO, nao por batalha. Qualquer alteracao a
+# BLOCO_SALVAMENTO obriga a recalibrar estes dois valores.
+#
+# Alvo: 400.000 batalhas (40 repeticoes de 10k), blocos de 1.000 = 400 blocos,
+# com o epsilon a atingir o minimo a ~70% do treino, ou seja no bloco 280.
+# Piso 0,001 e teto 0,002 dao media estimada de 0,00127/bloco -> minimo ~bloco 275.
+#
+# Historico: com 0,002 e 0,003 (calibrados para 200k) o minimo caia no bloco 92 de
+# 200, ou seja a 46% do treino.
+#
+# VERIFICACAO na primeira noite (a taxa de descoberta com 60 times pode divergir):
+#     bloco  50 (50k)  -> epsilon ~0,336
+#     bloco 100 (100k) -> epsilon ~0,273
+#     bloco 200 (200k) -> epsilon ~0,146
+#     bloco 280 (280k) -> epsilon  0,050
+# Muito abaixo do esperado pede piso maior; acima, piso menor. E proporcional.
+#
+# RECALIBRACAO DE 29/08/2026, sobre dados REAIS e nao sobre estimativa.
+# O ciclo de 400k com 0,00067 e 0,001 atingiu o minimo no bloco 209 de 400 (52%),
+# quando o alvo era o bloco 280 (70%). O decaimento medio observado foi 0,001683 por
+# bloco, ou seja 1,683 vezes o piso: e essa razao, MEDIDA e nao suposta, que calibra
+# os valores abaixo.
+#
+#   minimo no bloco 280 (70%)  ->  piso 0,00074   decay 0,00050
+#   minimo no bloco 300 (75%)  ->  piso 0,00069   decay 0,00046   <== ESCOLHIDO
+#   minimo no bloco 320 (80%)  ->  piso 0,00065   decay 0,00044
+#
+# Alvo de 75% e nao 70% porque o requisito e "NO MINIMO 70%" e as tres calibracoes
+# anteriores erraram sempre por defeito (o minimo chegou cedo demais). Cinco pontos
+# de margem garantem o requisito mesmo com desvio semelhante.
+#
+# COMO CONFIRMAR QUE ESTA APLICADO: o cabecalho do treino imprime
+# "epsilon : 0.4 -> 0.05 (piso 0.00069)". Se disser 0.001, o ficheiro nao foi
+# substituido. Foi assim que se detetou, no ciclo v9, que a recalibracao anterior
+# nunca chegara ao disco: o piso impresso era 0,001 e o epsilon caia 0,002 por bloco
+# (= 3 x 0,00067, o TETO dos valores antigos).
+DECAY_FLOOR   = 0.00069
 NOVELTY_K = 30.0
 
 # ---- PROTOCOLO ----
 MAX_BATALHAS = 10_000        # teto do treino
-BLOCO_SALVAMENTO = 1_000     # log + save do cérebro a cada 1000 batalhas
-CONCORRENCIA = 3             # batalhas simultâneas (limita uso de RAM)
+BLOCO_SALVAMENTO = 1000      # log + save do cérebro a cada 1000 batalhas
+                             # ATENCAO: alterar isto obriga a recalibrar
+                             # EPSILON_DECAY e DECAY_FLOOR (ver acima)
+CONCORRENCIA = 5             # batalhas simultâneas. Subiu de 3 para 5 em
+                             # 27/08/2026: a maquina fica dedicada ao treino.
+                             # Nao altera o que se aprende, so a ordem de
+                             # chegada das atualizacoes (logo as corridas
+                             # deixam de ser reproduziveis por semente).
 REPLAY_CICLOS = 20           # chamadas de replay por bloco (batch inalterado)
 BATTLE_FORMAT = "gen9nationaldex"
 AGENT = "green"
@@ -144,8 +197,22 @@ async def main():
     csv_path = os.path.join(LOGS_DIR, f"{AGENT}_treino_{sessao:02d}.csv")
     with open(csv_path, "w", newline="") as f:
         csv.writer(f).writerow(
+            # COLUNAS DE CONVERGENCIA (30/08/2026).
+            #
+            # `Visitas_Est` (media simples de visitas) SAIU. Tratava todos os estados
+            # por igual, e medido nos cerebros de 400k 16,7% dos estados absorvem
+            # 90,7% das decisoes. A media respondia a pergunta errada.
+            # `Confianca` (visit_counts>=3) tambem saiu: limiar baixo demais para
+            # significar confianca.
+            #
+            # Entram cinco. `Cobertura_Pond` e `Descoberta_Turno` medem TERRENO;
+            # `Churn_Politica`, `Delta_Q` e `Margem_Decisao` medem CONVERGENCIA, que
+            # e outra coisa: a politica pode estar estavel com cobertura a crescer,
+            # e pode haver cobertura alta com a decisao ainda a oscilar.
             ["Batalhas", "WinRate_Bloco", "Vitorias", "Derrotas", "Estados_Q", "Epsilon",
-             "Visitas_Est", "Confianca", "Reward", "Ghost_Battles",
+             "Cobertura_Pond", "Descoberta_Turno", "Churn_Politica", "Delta_Q",
+             "Margem_Decisao", "Estados_Maduros",
+             "Reward", "Ghost_Battles",
              "Latencia_ms", "Margem_Media", "Duracao_Media", "Auto_Ties", "Tamanho_KB", "Tempo_s"])
 
     # SAVE IMEDIATO: cria o .pkl logo no arranque, para o ficheiro existir (e o
@@ -203,7 +270,10 @@ async def main():
         agent.brain.decay_epsilon(new_states=new_states, battles_in_block=BLOCO_SALVAMENTO)
         agent.save_brain()
 
-        _, avg_visits, conf = agent.brain.inspect_brain()
+        # As metricas de convergencia guardam snapshot para o bloco seguinte, logo
+        # tem de ser chamadas UMA vez por bloco e sempre na mesma ordem.
+        conv = agent.brain.metricas_convergencia()
+        _, avg_visits, conf = agent.brain.inspect_brain()   # so para o relatorio
         ghost = len(agent.brain.active_battles_reward)
         wall = time.time() - t0
         tamanho_kb = os.path.getsize(brain_path) / 1024.0 if os.path.exists(brain_path) else 0.0
@@ -222,13 +292,25 @@ async def main():
         with open(csv_path, "a", newline="") as f:
             csv.writer(f).writerow(
                 [total, f"{wr:.2f}", won, derrotas, len(agent.brain.q_table),
-                 f"{agent.brain.epsilon:.4f}", f"{avg_visits:.2f}", f"{conf:.2f}",
+                 f"{agent.brain.epsilon:.4f}",
+                 f"{conv['cobertura_ponderada']:.2f}",
+                 f"{conv['descoberta_por_turno']:.6f}",
+                 f"{conv['churn_politica']:.3f}",
+                 f"{conv['delta_q']:.4f}",
+                 f"{conv['margem_decisao']:.1f}",
+                 conv['estados_maduros'],
                  f"{reward:.0f}", ghost, f"{lat:.2f}", f"{marg:.2f}", f"{dur:.1f}",
                  ties, f"{tamanho_kb:.0f}", f"{wall:.0f}"])
 
         rel.bloco(batalhas=total, metricas={
             "win_rate": wr, "estados": len(agent.brain.q_table),
-            "epsilon": agent.brain.epsilon, "visitas": avg_visits, "confianca": conf,
+            "epsilon": agent.brain.epsilon,
+            "cobertura_pond": conv["cobertura_ponderada"],
+            "descoberta_turno": conv["descoberta_por_turno"],
+            "churn_politica": conv["churn_politica"],
+            "delta_q": conv["delta_q"],
+            "margem_decisao": conv["margem_decisao"],
+            "visitas": avg_visits, "confianca": conf,
             "latencia_ms": lat, "margem_media": marg, "duracao_media": dur,
             "auto_ties": ties, "tempo_s": wall, "reward": reward,
         })

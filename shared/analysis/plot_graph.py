@@ -102,8 +102,12 @@ def setup_training_files(base_folder, agent_name):
 
 
 def generate_graph(csv_path, img_output_path, agent="Agente", opponent="Instinto",
-                   phase="instinct", total_battles=0, final_win_rate=0.0,
-                   final_states=0, title_suffix=None):
+                   total_battles=0, final_win_rate=0.0,
+                   final_states=0, title_suffix=None, phase=None):
+    # `phase` ficou APENAS por compatibilidade de assinatura e e IGNORADO desde
+    # 25/08/2026. Era residuo do curriculum learning (maxdamage -> instinct ->
+    # selfplay), abandonado ha muito: nenhum script o passava, logo todos os graficos
+    # herdavam o rotulo morto "Fase: INSTINCT" no titulo.
     """Gera o grafico da sessao. `title_suffix` existe apenas por compatibilidade
     com a assinatura antiga (se dado e agent nao, e usado como nome do agente)."""
     if title_suffix and agent == "Agente":
@@ -142,6 +146,14 @@ def generate_graph(csv_path, img_output_path, agent="Agente", opponent="Instinto
                       markersize=4, label='Win Rate (Bloco)', zorder=3)
     ax1.tick_params(axis='y', labelcolor=cor_wr)
     ax1.set_ylim(0, 100)
+    # GRELHA FINA NO WIN RATE (29/08/2026). O matplotlib escolhia marcas de 20 em 20,
+    # e com o eixo de 0 a 100 uma variacao de 3 pp — que a 1,4 pp de ruido binomial ja
+    # e sinal — ficava indistinguivel a olho. Marcas maiores de 10 em 10, menores de
+    # 5 em 5 sem rotulo, e grelha nas duas.
+    ax1.set_yticks(range(0, 101, 10))
+    ax1.set_yticks(range(0, 101, 5), minor=True)
+    ax1.grid(axis='y', which='major', alpha=0.35, color='#adb5bd')
+    ax1.grid(axis='y', which='minor', alpha=0.18, color='#adb5bd', linestyle=':')
     ax1.set_xlim(0, max(battles) * 1.05)
     ax1.axhline(y=50, color='#6c757d', linestyle='--', alpha=0.5, linewidth=1.2,
                 label='Equilibrio (50%)')
@@ -164,7 +176,7 @@ def generate_graph(csv_path, img_output_path, agent="Agente", opponent="Instinto
         ax3.tick_params(axis='y', labelcolor=cor_e)
         ax3.set_ylim(0, max(epsilons) * 1.2 if max(epsilons) > 0 else 1.0)
 
-    ax1.set_title(f"{agent} — Fase: {str(phase).upper()} | Oponente: {str(opponent).upper()}",
+    ax1.set_title(f"{agent}  vs  {str(opponent).upper()}",
                   fontweight='bold', color='#212529', pad=20)
 
     wr_final = final_win_rate or (win_rates[-1] if win_rates else 0.0)
@@ -195,7 +207,5 @@ if __name__ == "__main__":
     ap.add_argument("--out", required=True)
     ap.add_argument("--agent", default="Agente")
     ap.add_argument("--opponent", default="Instinto")
-    ap.add_argument("--phase", default="instinct")
     args = ap.parse_args()
-    generate_graph(args.csv, args.out, agent=args.agent, opponent=args.opponent,
-                   phase=args.phase)
+    generate_graph(args.csv, args.out, agent=args.agent, opponent=args.opponent)

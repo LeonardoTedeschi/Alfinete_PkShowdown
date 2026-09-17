@@ -38,11 +38,13 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BRAINS_DIR = os.path.join(ROOT, "artefatos", "brains")
 LOGS_DIR = os.path.join(ROOT, "artefatos", "logs")
 
+BLOCO_BATALHAS = 1_000            # batalhas por linha do CSV
 BATALHAS_POR_REPETICAO = 10_000   # tem de bater com MAX_BATALHAS dos scripts
 
 TREINOS = {
     "blue": "scripts.train_blue",
     "green": "scripts.train_green",
+    "ash": "scripts.train_ash",
 }
 
 
@@ -121,11 +123,30 @@ def auditar_cerebro(agente, limiar_q=200000.0):
     return True, rel
 
 
-# --- Criterio de convergencia AO NIVEL DO PLANO -------------------------------
+# --- Indicador de ESTABILIDADE ao nivel do plano ------------------------------
 # Avaliado entre repeticoes, sobre TODOS os blocos acumulados, e nao dentro de uma
 # corrida de 10k. Julgar convergencia sobre 5 blocos (5000 batalhas) e fragil: o erro
 # padrao de um bloco de 1000 batalhas e ~1.58pp, logo com ruido puro a amplitude de 5
 # blocos fica abaixo de 2pp em ~10% das janelas, cortando corridas ao acaso.
+#
+# ORCAMENTO FIXO (29/08/2026). Isto e um INDICADOR IMPRESSO, nunca um criterio de
+# paragem. Existia aqui um `break` por convergencia que contradizia dois outros
+# pontos do proprio projeto:
+#
+#   train_blue.py l.321-326    "o treino corre SEMPRE as MAX_BATALHAS. Nao ha
+#                               paragem antecipada."
+#   este ficheiro, l.281-288   recusa abortar por estagnacao porque "daria a um
+#                               agente menos batalhas que a outro, invalidando a
+#                               comparacao de orcamento fixo"
+#
+# A razao e a mesma nos tres sitios: se o Blue parar a 300k e o Green correr 400k, a
+# diferenca de desempenho entre eles confunde-se com a diferenca de orcamento, e a
+# comparacao (que E a tese) deixa de medir o que diz medir.
+#
+# A probabilidade de o `break` disparar era baixa: com sd=1.5pp, a amplitude media
+# esperada de 20 blocos e 5.6pp e P(amplitude <= 2.0pp) ~ 1e-5 por avaliacao. Mas o
+# custo de disparar era o ciclo inteiro invalidado sem aviso. Uma armadilha rara com
+# consequencia total nao se deixa armada; remove-se.
 CONV_BLOCOS = 20        # blocos recentes considerados (= 20k batalhas)
 CONV_AMPLITUDE_PP = 2.0 # amplitude maxima do WR nesses blocos
 
@@ -153,7 +174,11 @@ def wr_recentes(agente, n=CONV_BLOCOS):
 
 
 def avaliar_convergencia(agente):
-    """Devolve (convergiu, mensagem) com base nos blocos acumulados do agente."""
+    """Devolve (estavel, mensagem) com base nos blocos acumulados do agente.
+
+    INDICADOR, nao criterio de paragem: o valor devolvido e impresso e mais nada.
+    Ver o bloco ORCAMENTO FIXO junto a CONV_BLOCOS.
+    """
     v = wr_recentes(agente)
     if len(v) < CONV_BLOCOS:
         return False, f"{len(v)}/{CONV_BLOCOS} blocos acumulados (ainda a reunir dados)"
@@ -208,7 +233,14 @@ def consolidar(agente, arquivos):
                     if not linha:
                         continue
                     try:
-                        batalhas = int(linha[0])
+                        # BUG CORRIGIDO: se a coluna vier como indice de bloco (1,2,3)
+                        # em vez de batalhas acumuladas (1000,2000,3000), o offset
+                        # somava valores errados e o consolidado ficava com 1..189
+                        # em vez de 1000..189000, corrompendo qualquer tendencia
+                        # calculada por batalha.
+                        batalhas = int(float(linha[0]))
+                        if batalhas < BLOCO_BATALHAS:
+                            batalhas *= BLOCO_BATALHAS
                         linha[0] = batalhas + offset
                         ultimo = batalhas
                     except (ValueError, IndexError):
@@ -296,9 +328,10 @@ def executar_plano(plano, reset):
             # Cada execucao cria o SEU CSV numerado; detetamos qual e o novo.
             csvs_depois = listar_csvs(agente)
             novos = [c for c in csvs_depois if c not in csvs_antes]
-            # Convergencia avaliada AQUI, sobre os blocos acumulados de todas as
-            # sessoes, e nao dentro de cada corrida de 10k.
-            convergiu, msg_conv = avaliar_convergencia(agente)
+            # Estabilidade avaliada AQUI, sobre os blocos acumulados de todas as
+            # sessoes, e nao dentro de cada corrida de 10k. INDICADOR: imprime-se e
+            # nao se age sobre ela (ver ORCAMENTO FIXO junto a CONV_BLOCOS).
+            estavel, msg_conv = avaliar_convergencia(agente)
 
             arq = novos[0] if novos else None
             if arq:
@@ -307,15 +340,19 @@ def executar_plano(plano, reset):
             print(f"[ORQUESTRADOR] {agente} repeticao {i}/{repeticoes} OK em {dt:.0f}s | "
                   f"estados: {max(0, estados_antes):,} -> {estados_depois:,} (+{crescimento:,}) | "
                   f"maior |Q|: {rel['maior_q']:,.0f}")
+            # BUG CORRIGIDO (29/08/2026): este `else` estava ligado ao `if convergiu`
+            # e nao ao `if arq`. Consequencia dupla: toda repeticao que nao
+            # convergisse, ou seja as 40 de um ciclo de 400k, imprimia "nao foi
+            # criado um CSV novo" TENDO criado, e o caso real de CSV em falta nunca
+            # chegava a ser reportado. Um aviso que dispara sempre deixa de ser um
+            # aviso: treina o operador a ignorar a linha onde o problema a serio
+            # apareceria.
             if arq:
                 print(f"               log desta sessao: {os.path.basename(arq)}")
-            print(f"               convergencia: {msg_conv}")
-            if convergiu:
-                print(f"[ORQUESTRADOR] {agente.upper()} CONVERGIU. A parar o plano "
-                      f"(restavam {repeticoes - i} repeticoes).")
-                break
             else:
                 print("               AVISO: nao foi criado um CSV novo nesta repeticao.")
+            print(f"               estabilidade: {msg_conv}"
+                  f"{'  [ESTAVEL]' if estavel else ''}")
 
         if arquivos:
             consolidar(agente, arquivos)
@@ -329,7 +366,7 @@ def modo_interativo():
     print("=" * 60)
     print("Agentes: blue (hibrido), green (Q-puro). Cada repeticao = 10k batalhas.")
     plano = []
-    for agente in ["blue", "green"]:
+    for agente in ["blue", "green", "ash"]:
         while True:
             resp = input(f"Quantas repeticoes de 10k para o {agente.upper()}? (0 = nenhuma): ").strip()
             if resp == "":
@@ -356,6 +393,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Orquestrador de treino continuo.")
     ap.add_argument("--blue", type=int, default=None, help="repeticoes de 10k do Blue")
     ap.add_argument("--green", type=int, default=None, help="repeticoes de 10k do Green")
+    ap.add_argument("--ash", type=int, default=None, help="repeticoes de 10k do Ash")
     ap.add_argument("--batalhas", type=int, default=None,
                     help="ORCAMENTO FIXO em batalhas por agente (ex.: 200000). "
                          "Converte-se em repeticoes de 10k e aplica-se a todos os "
@@ -370,10 +408,10 @@ if __name__ == "__main__":
         # confundir-se-ia com a diferenca de orcamento.
         reps = max(1, round(args.batalhas / BATALHAS_POR_REPETICAO))
         efetivo = reps * BATALHAS_POR_REPETICAO
-        agentes = [a for a in ("blue", "green")
-                   if getattr(args, a) is not None or (args.blue is None and args.green is None)]
+        pedidos = {"blue": args.blue, "green": args.green, "ash": args.ash}
+        agentes = [a for a, v in pedidos.items() if v is not None]
         if not agentes:
-            agentes = ["blue", "green"]
+            agentes = ["blue", "green", "ash"]
         print(f"[ORQUESTRADOR] ORCAMENTO FIXO: {efetivo:,} batalhas por agente "
               f"({reps} repeticoes de {BATALHAS_POR_REPETICAO:,})")
         if efetivo != args.batalhas:
@@ -384,4 +422,5 @@ if __name__ == "__main__":
     elif args.blue is None and args.green is None:
         modo_interativo()
     else:
-        executar_plano([("blue", args.blue or 0), ("green", args.green or 0)], args.reset)
+        executar_plano([("blue", args.blue or 0), ("green", args.green or 0),
+                        ("ash", args.ash or 0)], args.reset)

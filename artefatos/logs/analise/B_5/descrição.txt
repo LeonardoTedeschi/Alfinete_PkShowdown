@@ -1,0 +1,1 @@
+Blue recompensa terminal de vitória e derrota reduzida(+100) e correção na bonificação sobre status e hazards

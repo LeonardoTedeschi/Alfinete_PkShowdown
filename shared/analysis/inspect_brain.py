@@ -33,18 +33,28 @@ from qlearning.brain import BlueBrain
 
 ACTIONS = BlueBrain().actions  # lista de 37 (base + _MEC)
 
-# Nomes das 15 dimensões do estado, na ORDEM REAL do StateParser.
+# Dimensao importada do StateParser em vez de repetida aqui: e a mesma razao pela
+# qual ACTIONS vem do BlueBrain. Quando o estado cresceu de 15 para 16 dimensoes
+# (30/08/2026), uma constante local desactualizada faria a coluna nova desaparecer do
+# dashboard SEM dar erro nenhum.
+from shared.state import STATE_DIM
+
+# Nomes das dimensões do estado, na ORDEM REAL do StateParser.
 STATE_LABELS = [
     "my_role", "opp_role", "matchup", "my_hp", "opp_hp",
     "weather", "speed", "mechanic", "my_status", "opp_status",
     "my_boost", "opp_boost", "my_hazard", "opp_hazard", "macro",
+    "banco",
 ]
+assert len(STATE_LABELS) == STATE_DIM, (
+    f"STATE_LABELS tem {len(STATE_LABELS)} nomes e STATE_DIM e {STATE_DIM}. "
+    "Actualize os dois em conjunto.")
 
 
 def decode_state(state_tuple):
     """Converte a tupla de estado em colunas legíveis, na ordem correta."""
     s = list(state_tuple)
-    while len(s) < 15:
+    while len(s) < STATE_DIM:
         s.append("?")
     return {
         "Roles": f"{s[0]} v {s[1]}",
@@ -57,10 +67,16 @@ def decode_state(state_tuple):
         "Boosts": f"{s[10]} v {s[11]}",
         "Hazards": f"{s[12]} v {s[13]}",
         "Contexto": str(s[14]),
+        # Dimensao 15, acrescentada em 30/08/2026. E a unica que diz alguma coisa
+        # sobre o BANCO, e sem ela a coluna de accoes SWITCH_* do dashboard fica sem
+        # explicacao: o mesmo estado tanto podia ter um contra-tanque a espera como
+        # cinco Pokemon mortos.
+        "Banco": str(s[15]).replace("BANCO_", ""),
     }
 
 
-def generate_dashboard(df, action_counts, visit_stats, filename, agent_name):
+def generate_dashboard(df, action_counts, visit_stats, massa, cobertura_pond,
+                       filename, agent_name):
     fig = plt.figure(figsize=(26, 16))
     gs = GridSpec(2, 2, height_ratios=[1.2, 4], width_ratios=[1, 1.2], hspace=0.15)
     fig.patch.set_facecolor('#f4f4f9')
@@ -88,12 +104,20 @@ def generate_dashboard(df, action_counts, visit_stats, filename, agent_name):
     ax3.bar(x_pos, counts, color=bar_colors, edgecolor='black')
     ax3.set_xticks(x_pos)
     ax3.set_xticklabels(bars, fontsize=10, weight='bold')
-    ax3.set_title("Profundidade de Aprendizado (Frequência de Visitas)", fontsize=14, weight='bold', pad=10)
+    ax3.set_title(f"Profundidade de Aprendizado  |  COBERTURA PONDERADA: {cobertura_pond:.1f}% "
+                  f"das decisoes em estados maduros",
+                  fontsize=13, weight='bold', pad=10)
     ax3.set_ylabel("Quantidade de Estados", fontsize=12, weight='bold')
+    # Duas percentagens por barra: quantos ESTADOS e, por baixo, quanta DECISAO.
+    # A segunda e a que decide, e sem ela a primeira engana: o balde de 1 visita
+    # parece enorme (25% dos estados) e vale 0,7% do jogo.
     total_counts = max(1, sum(counts))
-    for i, v in enumerate(counts):
-        ax3.text(i, v + (max(counts) * 0.02 if counts else 1), f"{v}\n({v/total_counts*100:.1f}%)",
-                 ha='center', va='bottom', weight='bold')
+    total_m = max(1, sum(massa.values()))
+    massa_ord = [massa['1'], massa['2_4'], massa['5_19'], massa['20+']]
+    for i, (v, m) in enumerate(zip(counts, massa_ord)):
+        ax3.text(i, v + (max(counts) * 0.02 if counts else 1),
+                 f"{v:,}\n{v/total_counts*100:.1f}% estados\n{m/total_m*100:.1f}% DECISOES",
+                 ha='center', va='bottom', weight='bold', fontsize=9)
 
     ax2 = fig.add_subplot(gs[1, :])
     ax2.axis('off')
@@ -139,16 +163,34 @@ def analyze_brain(brain_file, out_dir, agent_name):
         print("AVISO: Q-table vazia.")
         return
 
+    # CONTAGEM DE ESTADOS **E** DE MASSA DE DECISAO (30/08/2026).
+    #
+    # A versao anterior contava so ESTADOS por balde, e essa e a metrica errada:
+    # medido nos cerebros de 400k, 16,7% dos estados absorvem 90,7% de todas as
+    # decisoes. "Um quarto dos estados tem uma visita" soa mal; "0,7% das decisoes
+    # acontecem nesses estados" e a mesma realidade e leva a conclusao oposta.
+    #
+    # BUG CORRIGIDO no mesmo sitio: o `else` final apanhava tambem os estados com
+    # ZERO visitas e contava-os como maduros. Havia exactamente um (a chave `None`
+    # criada pelo bug da troca forcada), e era por isso que o dashboard dizia 71.524
+    # maduros quando `>= 20` da 71.523.
     visit_stats = {'1': 0, '2_4': 0, '5_19': 0, '20+': 0}
+    massa = {'1': 0, '2_4': 0, '5_19': 0, '20+': 0}
     for v in visit_counts.values():
+        if v <= 0:
+            continue          # estado criado e nunca actualizado: nao e maduro
         if v == 1:
-            visit_stats['1'] += 1
+            chave = '1'
         elif 2 <= v <= 4:
-            visit_stats['2_4'] += 1
+            chave = '2_4'
         elif 5 <= v <= 19:
-            visit_stats['5_19'] += 1
+            chave = '5_19'
         else:
-            visit_stats['20+'] += 1
+            chave = '20+'
+        visit_stats[chave] += 1
+        massa[chave] += v
+    total_massa = max(1, sum(massa.values()))
+    cobertura_pond = massa['20+'] / total_massa * 100.0
 
     action_counts = {'attack': 0, 'switch': 0, 'support': 0}
     ranked = []
@@ -175,8 +217,11 @@ def analyze_brain(brain_file, out_dir, agent_name):
     os.makedirs(out_dir, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out = os.path.join(out_dir, f"analise_{agent_name}_{ts}_dashboard.png")
-    generate_dashboard(df, action_counts, visit_stats, out, agent_name)
-    print(f"[RELATÓRIO] Concluído. Estados: {len(q_table)}")
+    generate_dashboard(df, action_counts, visit_stats, massa, cobertura_pond,
+                       out, agent_name)
+    print(f"[RELATÓRIO] Concluído. Estados: {len(q_table):,} | "
+          f"maduros: {visit_stats['20+']:,} | "
+          f"cobertura ponderada: {cobertura_pond:.2f}% das decisões")
 
 
 if __name__ == "__main__":

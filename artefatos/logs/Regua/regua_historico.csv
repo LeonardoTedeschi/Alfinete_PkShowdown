@@ -1,0 +1,14 @@
+Data,Etiqueta,Estado,Pool,Adversario,Semente,Batalhas,Vitorias,Derrotas,Empates,WinRate,ErroPadrao_pp,Duracao_Media,Duracao_Max,Margem_Media,Auto_Ties,Tempo_s,Sessao
+20260829_150438,v14-instinto-revisto(Lead e setter),INCOMPLETA,treino,MaxDamage,42,10000,,,,,,,,,,,28
+20260829_150438,v14-instinto-revisto(Lead e setter),OK,treino,MaxDamage,42,10000,6615,3385,0,66.15,0.47,26.4,166,1.65,0,561,28
+20260829_153918,v14-instinto-revisto(Lead e setter),INCOMPLETA,treino,MaxDamage,42,10000,,,,,,,,,,,28
+20260829_153918,v14-instinto-revisto(Lead e setter),OK,treino,MaxDamage,42,10000,6732,3268,0,67.32,0.47,25.8,168,1.74,0,446,28
+20260829_154953,v14-instinto-revisto(Lead e setter),INCOMPLETA,eval,MaxDamage,42,10000,,,,,,,,,,,29
+20260829_154953,v14-instinto-revisto(Lead e setter),OK,eval,MaxDamage,42,10000,6667,3333,0,66.67,0.47,30.1,229,1.72,0,557,29
+20260829_160151,v13-impasse atualização do lead,INCOMPLETA,treino,InstinctBot,42,2000,,,,,,,,,,,30
+20260829_160151,v13-impasse atualização do lead,OK,treino,InstinctBot,42,2000,985,1014,1,49.25,1.12,34.0,1000,0.28,1,130,30
+20260829_203652,v15-history,INCOMPLETA,treino,MaxDamage,42,10000,,,,,,,,,,,31
+20260829_204522,v15-history,INCOMPLETA,treino,MaxDamage,42,10000,,,,,,,,,,,32
+20260829_204522,v15-history,OK,treino,MaxDamage,42,10000,7437,2563,0,74.37,0.44,25.2,188,2.09,0,472,32
+20260829_205351,v15-history,INCOMPLETA,eval,MaxDamage,42,10000,,,,,,,,,,,33
+20260829_205351,v15-history,OK,eval,MaxDamage,42,10000,7402,2598,0,74.02,0.44,29.0,188,2.07,0,576,33

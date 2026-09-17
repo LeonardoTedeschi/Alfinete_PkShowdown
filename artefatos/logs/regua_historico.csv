@@ -1,0 +1,18 @@
+Data,Etiqueta,Estado,Pool,Adversario,Semente,Batalhas,Vitorias,Derrotas,Empates,WinRate,ErroPadrao_pp,Duracao_Media,Duracao_Max,Margem_Media,Auto_Ties,Tempo_s,Sessao
+20260903_092653,v19-Aumentando a visão,INCOMPLETA,treino,MaxDamage,42,10000,,,,,,,,,,,01
+20260903_092653,v19-Aumentando a visão,OK,treino,MaxDamage,42,10000,7738,2262,0,77.38,0.42,23.8,145,2.26,0,741,01
+20260903_093936,v19-Aumentando a visão,INCOMPLETA,eval,MaxDamage,42,10000,,,,,,,,,,,02
+20260903_093936,v19-Aumentando a visão,OK,eval,MaxDamage,42,10000,7980,2020,0,79.80,0.40,26.9,193,2.42,0,651,02
+20260904_094703,v20-Correção do loop de hazards,INCOMPLETA,treino,MaxDamage,42,10000,,,,,,,,,,,03
+20260904_094703,v20-Correção do loop de hazards,OK,treino,MaxDamage,42,10000,7882,2118,0,78.82,0.41,23.7,193,2.37,0,609,03
+20260904_100744,v20-Correção do loop de hazards,INCOMPLETA,eval,MaxDamage,42,10000,,,,,,,,,,,04
+20260904_100744,v20-Correção do loop de hazards,OK,eval,MaxDamage,42,10000,8052,1948,0,80.52,0.40,26.3,185,2.48,0,629,04
+20260904_172249,v21-rest e bulletprouf,INCOMPLETA,treino,MaxDamage,42,10000,,,,,,,,,,,05
+20260904_184325,v21-Correção rest e bulletprouf,INCOMPLETA,treino,MaxDamage,42,10000,,,,,,,,,,,05
+20260904_184325,v21-Correção rest e bulletprouf,OK,treino,MaxDamage,42,10000,7845,2155,0,78.45,0.41,23.6,140,2.37,0,584,05
+20260904_191647,v21-Correção rest e bulletprouf,INCOMPLETA,eval,MaxDamage,42,10000,,,,,,,,,,,06
+20260904_191647,v21-Correção rest e bulletprouf,OK,eval,MaxDamage,42,10000,8017,1983,0,80.17,0.40,26.3,176,2.46,0,500,06
+20260906_102345,v22-Correção do Furute Sight e do wish do historico de batalha,INCOMPLETA,treino,MaxDamage,42,10000,,,,,,,,,,,07
+20260906_102345,v22-Correção do Furute Sight e do wish do historico de batalha,OK,treino,MaxDamage,42,10000,7891,2109,0,78.91,0.41,23.3,156,2.37,0,769,07
+20260906_103657,v22-Correção do Furute Sight e do wish do historico de batalha,INCOMPLETA,eval,MaxDamage,42,10000,,,,,,,,,,,08
+20260906_103657,v22-Correção do Furute Sight e do wish do historico de batalha,OK,eval,MaxDamage,42,10000,8126,1874,0,81.26,0.39,25.8,237,2.52,0,811,08

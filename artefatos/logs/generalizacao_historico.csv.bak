@@ -1,0 +1,5 @@
+Data,Etiqueta,Agente,Batalhas_Por_Condicao,WR_Treino,WR_Holdout,Queda_pp,Queda_Corrigida_pp,EP_Diferenca_pp,Margem_Treino,Margem_Holdout,Duracao_Treino,Duracao_Holdout,Ties_Treino,Ties_Holdout,Estados_Novos_Treino,Estados_Novos_Holdout
+20260910_104243,,BLUE,5000,61.92,38.84,+23.08,+20.66,0.97,2.98,2.44,31,35,1,1,6905,15246
+20260910_114020,,GREEN,5000,66.08,48.30,+17.78,+15.36,0.97,2.95,2.40,32,34,1,0,6391,13923
+20260911_094229,,BLUE,5000,48.46,22.46,+26.00,+23.58,0.92,2.88,2.56,31,34,0,6,9619,15566
+20260911_102649,,BLUE,5000,55.58,24.54,+31.04,+28.62,0.93,2.93,2.49,33,37,1,3,8758,17955
