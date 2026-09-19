@@ -147,7 +147,7 @@ class ActionMasker:
                             damaging_types.add(move.type)
 
             if MoveCategory.ATTACK_STRONG.name in available and len(damaging_types) > 1:
-                benched_opponents = [m for m in battle.opponent_team.values() if not m.fainted and not m.active]
+                _, benched_opponents = self.physics.equipa_adversaria(battle)
                 if benched_opponents:
                     available.add(MoveCategory.ATTACK_PREDICTIVE.name)
 
@@ -431,7 +431,17 @@ class ActionMasker:
 
         # 4. STATUS: imunidades e aplicação redundante
         if move.category.name == "STATUS":
-            if active.ability == 'prankster' and 'DARK' in opp_types:
+            # No poke-env, Recover/Roost etc. continuam sendo MoveCategory.STATUS
+            # porque a enum nativa so tem PHYSICAL/SPECIAL/STATUS; no ALFINETE eles
+            # sao classificados funcionalmente como HEAL. A imunidade de Dark a
+            # Prankster vale apenas para golpes priorizados que AFETAM o adversario,
+            # nunca para Recover ou outro status de alvo proprio.
+            _target_name = str(getattr(getattr(move, 'target', None), 'name', '') or '').upper()
+            _targets_opponent = _target_name not in {
+                'SELF', 'ALLY_SIDE', 'ALLY_TEAM', 'ADJACENT_ALLY',
+                'ADJACENT_ALLY_OR_SELF', 'ALLIES'
+            }
+            if active.ability == 'prankster' and 'DARK' in opp_types and _targets_opponent:
                 return True
             if move.id in ['spore', 'sleeppowder', 'stunspore', 'poisonpowder', 'ragepowder']:
                 if 'GRASS' in opp_types or 'overcoat' in opp_abilities:
@@ -442,8 +452,9 @@ class ActionMasker:
                 return True
             if any(ab in opp_abilities for ab in ['magicbounce']) and getattr(move, 'target', '') in ['normal', 'allAdjacentFoes', 'foeSide']:
                 return True
-            if any(ab in opp_abilities for ab in ['goodasgold', 'magicguard']):
-                return True
+            # Good as Gold / Magic Bounce sao tratados acima apenas quando o
+            # golpe de status realmente mira o adversario. Magic Guard NAO concede
+            # imunidade geral a status; apenas evita dano indireto.
             if move.id in ['confuseray', 'swagger'] and any(ab in opp_abilities for ab in ['owntempo', 'oblivious']):
                 return True
 

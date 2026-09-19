@@ -24,6 +24,8 @@ from datetime import datetime
 
 import numpy as np
 import pandas as pd
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 
@@ -31,7 +33,7 @@ from matplotlib.gridspec import GridSpec
 # dessincronizado do espaço de ações real.
 from qlearning.brain import BlueBrain
 
-ACTIONS = BlueBrain().actions  # lista de 37 (base + _MEC)
+ACTIONS = BlueBrain().actions  # 36 ações: 19 base, 17 variantes _MEC
 
 # Dimensao importada do StateParser em vez de repetida aqui: e a mesma razao pela
 # qual ACTIONS vem do BlueBrain. Quando o estado cresceu de 15 para 16 dimensoes
@@ -215,13 +217,15 @@ def analyze_brain(brain_file, out_dir, agent_name):
     df = pd.DataFrame(rows)
 
     os.makedirs(out_dir, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out = os.path.join(out_dir, f"analise_{agent_name}_{ts}_dashboard.png")
+    # Nome deterministico por marco (ex.: Blue_050k). Reexecutar a mesma analise
+    # substitui a fotografia daquele marco em vez de criar dezenas de timestamps.
+    out = os.path.join(out_dir, f"analise_{agent_name}_dashboard.png")
     generate_dashboard(df, action_counts, visit_stats, massa, cobertura_pond,
                        out, agent_name)
     print(f"[RELATÓRIO] Concluído. Estados: {len(q_table):,} | "
           f"maduros: {visit_stats['20+']:,} | "
           f"cobertura ponderada: {cobertura_pond:.2f}% das decisões")
+    return out
 
 
 if __name__ == "__main__":

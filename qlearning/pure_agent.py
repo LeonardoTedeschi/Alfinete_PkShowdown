@@ -16,6 +16,8 @@ Isto NÃO é "usar o instinto para decidir" — é usar a mesma representação 
 o Blue, para que a comparação seja justa. A decisão em si é 100% do Q-Learning.
 """
 
+import random
+
 from qlearning.base_agent import TabularAgent
 
 
@@ -48,6 +50,13 @@ class PureAgent(TabularAgent):
         valid_actions = self._expand_with_mechanic(list(categories), battle)
         if not valid_actions:
             valid_actions = ["ATTACK_STRONG"]
+
+        # Sem ranking do instinto, a ORDEM da lista nao pode funcionar como prior
+        # acidental. O brain escolhe valid_ranked[0] em estado virgem e usa posicoes
+        # da lista durante exploracao; uma lista vinda de set() teria ordem de hash.
+        # Embaralhar a cada decisao torna o cold start e a exploracao marginais
+        # uniformes entre as acoes legais, sem mexer no argmax Q da exploracao zero.
+        random.shuffle(valid_actions)
 
         # ranking_list vazio: o cérebro NÃO recebe prior do instinto.
         return valid_actions, []

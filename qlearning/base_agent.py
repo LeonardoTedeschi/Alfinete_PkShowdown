@@ -8,10 +8,10 @@ cientificamente válida: se divergissem noutra coisa, mediríamos "dois agentes
 diferentes", não "o efeito do instinto".
 
 Partilhado (nesta base):
-  - StateParser  -> mesma tupla de estado (15 dims)
+  - StateParser  -> mesma tupla de estado (16 dims)
   - BlueBrain    -> mesma Q-table, mesmo update, mesmo reward
   - InstinctExecutor -> mesma tradução intenção->golpe concreto
-  - mesmo espaço de 37 ações abstratas
+  - mesmo espaço de 36 ações abstratas (19 intenções-base; 17 têm variante _MEC)
 
 Diferença (definida nas subclasses via _get_actions_and_ranking):
   - Blue  (HybridAgent): usa o instinto para podar (mask) e ranquear (prior).
@@ -647,7 +647,8 @@ class TabularAgent(Player):
     # ------------------------------------------------------------------
 
     def save_brain(self):
-        self.brain.save_model(self.brain_file)
+        """Persiste o brain e devolve True/False para o chamador poder validar I/O."""
+        return self.brain.save_model(self.brain_file)
 
     def replay(self):
         self.brain.replay_experience()

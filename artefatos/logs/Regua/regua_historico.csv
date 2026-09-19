@@ -1,14 +1,18 @@
 Data,Etiqueta,Estado,Pool,Adversario,Semente,Batalhas,Vitorias,Derrotas,Empates,WinRate,ErroPadrao_pp,Duracao_Media,Duracao_Max,Margem_Media,Auto_Ties,Tempo_s,Sessao
-20260829_150438,v14-instinto-revisto(Lead e setter),INCOMPLETA,treino,MaxDamage,42,10000,,,,,,,,,,,28
-20260829_150438,v14-instinto-revisto(Lead e setter),OK,treino,MaxDamage,42,10000,6615,3385,0,66.15,0.47,26.4,166,1.65,0,561,28
-20260829_153918,v14-instinto-revisto(Lead e setter),INCOMPLETA,treino,MaxDamage,42,10000,,,,,,,,,,,28
-20260829_153918,v14-instinto-revisto(Lead e setter),OK,treino,MaxDamage,42,10000,6732,3268,0,67.32,0.47,25.8,168,1.74,0,446,28
-20260829_154953,v14-instinto-revisto(Lead e setter),INCOMPLETA,eval,MaxDamage,42,10000,,,,,,,,,,,29
-20260829_154953,v14-instinto-revisto(Lead e setter),OK,eval,MaxDamage,42,10000,6667,3333,0,66.67,0.47,30.1,229,1.72,0,557,29
-20260829_160151,v13-impasse atualização do lead,INCOMPLETA,treino,InstinctBot,42,2000,,,,,,,,,,,30
-20260829_160151,v13-impasse atualização do lead,OK,treino,InstinctBot,42,2000,985,1014,1,49.25,1.12,34.0,1000,0.28,1,130,30
-20260829_203652,v15-history,INCOMPLETA,treino,MaxDamage,42,10000,,,,,,,,,,,31
-20260829_204522,v15-history,INCOMPLETA,treino,MaxDamage,42,10000,,,,,,,,,,,32
-20260829_204522,v15-history,OK,treino,MaxDamage,42,10000,7437,2563,0,74.37,0.44,25.2,188,2.09,0,472,32
-20260829_205351,v15-history,INCOMPLETA,eval,MaxDamage,42,10000,,,,,,,,,,,33
-20260829_205351,v15-history,OK,eval,MaxDamage,42,10000,7402,2598,0,74.02,0.44,29.0,188,2.07,0,576,33
+20260903_092653,v19-Aumentando a visão,INCOMPLETA,treino,MaxDamage,42,10000,,,,,,,,,,,01
+20260903_092653,v19-Aumentando a visão,OK,treino,MaxDamage,42,10000,7738,2262,0,77.38,0.42,23.8,145,2.26,0,741,01
+20260903_093936,v19-Aumentando a visão,INCOMPLETA,eval,MaxDamage,42,10000,,,,,,,,,,,02
+20260903_093936,v19-Aumentando a visão,OK,eval,MaxDamage,42,10000,7980,2020,0,79.80,0.40,26.9,193,2.42,0,651,02
+20260904_094703,v20-Correção do loop de hazards,INCOMPLETA,treino,MaxDamage,42,10000,,,,,,,,,,,03
+20260904_094703,v20-Correção do loop de hazards,OK,treino,MaxDamage,42,10000,7882,2118,0,78.82,0.41,23.7,193,2.37,0,609,03
+20260904_100744,v20-Correção do loop de hazards,INCOMPLETA,eval,MaxDamage,42,10000,,,,,,,,,,,04
+20260904_100744,v20-Correção do loop de hazards,OK,eval,MaxDamage,42,10000,8052,1948,0,80.52,0.40,26.3,185,2.48,0,629,04
+20260904_172249,v21-rest e bulletprouf,INCOMPLETA,treino,MaxDamage,42,10000,,,,,,,,,,,05
+20260904_184325,v21-Correção rest e bulletprouf,INCOMPLETA,treino,MaxDamage,42,10000,,,,,,,,,,,05
+20260904_184325,v21-Correção rest e bulletprouf,OK,treino,MaxDamage,42,10000,7845,2155,0,78.45,0.41,23.6,140,2.37,0,584,05
+20260904_191647,v21-Correção rest e bulletprouf,INCOMPLETA,eval,MaxDamage,42,10000,,,,,,,,,,,06
+20260904_191647,v21-Correção rest e bulletprouf,OK,eval,MaxDamage,42,10000,8017,1983,0,80.17,0.40,26.3,176,2.46,0,500,06
+20260906_102345,v22-Correção do Furute Sight e do wish do historico de batalha,INCOMPLETA,treino,MaxDamage,42,10000,,,,,,,,,,,07
+20260906_102345,v22-Correção do Furute Sight e do wish do historico de batalha,OK,treino,MaxDamage,42,10000,7891,2109,0,78.91,0.41,23.3,156,2.37,0,769,07
+20260906_103657,v22-Correção do Furute Sight e do wish do historico de batalha,INCOMPLETA,eval,MaxDamage,42,10000,,,,,,,,,,,08
+20260906_103657,v22-Correção do Furute Sight e do wish do historico de batalha,OK,eval,MaxDamage,42,10000,8126,1874,0,81.26,0.39,25.8,237,2.52,0,811,08

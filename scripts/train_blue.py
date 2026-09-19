@@ -1,28 +1,27 @@
 """
-scripts/train_blue.py — treino individual do agente BLUE (híbrido).
+scripts/train_blue.py — treino individual do agente BLUE.
 
-Configuração:
-  - Máx. de batalhas POR EXECUÇÃO : 10.000
-  - Orçamento do ciclo            : 400.000 (40 repetições, via treino_continuo)
-  - Salvamento (log + cérebro)    : a cada 1.000 batalhas
-  - Batalhas simultâneas          : 5
-  - Timer do servidor DESLIGADO (evita derrotas por timeout de decisão; auto-ties
-    residuais não geram recompensa terminal, logo não poluem a Q-table)
-  - Ao fim: gera gráfico de treino + dashboard de inspeção do cérebro
+Configuracao:
+  - Max. de batalhas POR EXECUCAO : 10.000
+  - Orcamento do ciclo            : definido por treino_continuo (candidato v11/v8: 650.000)
+  - Bloco de aprendizagem/log     : 1.000 batalhas
+  - Persistencia do cerebro       : emergencia em 5.000; oficial em 10.000
+  - Batalhas simultaneas          : 5
+  - Timer do servidor DESLIGADO
+  - Graficos e dashboards         : centralizados no treino_continuo a cada 50.000
 
 Executar da raiz do projeto:
     python -m scripts.train_blue
 
-Nota de memória: blocos de 1.000 batalhas são consolidados e o cérebro é salvo a
-cada bloco, libertando memória — evita a sobrecarga de RAM de acumular muitas
-batalhas antes de consolidar.
+IMPORTANTE: o cerebro permanece em RAM durante toda a execucao de 10k. Salvar menos
+vezes nao aumenta a memoria permanente; apenas reduz serializacao/I/O. Se uma sessao
+for interrompida, os ficheiros *_brain_emergency.pkl e *_treino_emergencia.csv sao
+preservados para diagnostico/recuperacao e uma nova sessao nao os sobrescreve.
 """
 
 import asyncio
 import csv
-import glob
 import os
-import re
 import sys
 import time
 
@@ -38,8 +37,6 @@ from instinct.instinct_player import InstinctBot
 from qlearning.hybrid_agent import HybridAgent
 from shared.env.teams_train import RandomTeamFromPool, TEAMS_LIST
 from shared.console_report import RelatorioConsola
-from shared.analysis.plot_graph import generate_graph
-from shared.analysis.inspect_brain import analyze_brain
 
 LOCAL = ServerConfiguration("ws://localhost:8000/showdown/websocket", "http://localhost:8000/")
 
@@ -49,67 +46,35 @@ MIN_ALPHA = 0.02
 GAMMA = 0.99
 EPSILON_START = 0.40
 MIN_EPSILON = 0.05     # nunca menos de 5% de exploracao (aprendizado continuo)
-EPSILON_DECAY = 0.00046
-# CALIBRACAO DO CALENDARIO DO EPSILON (27/08/2026)
+EPSILON_DECAY = 0.00039
+# CALIBRACAO DO CALENDARIO DO EPSILON (19/09/2026)
 # ------------------------------------------------
-# A formula em brain.decay_epsilon e SUBTRATIVA POR BLOCO, com piso e teto:
+# Unica alteracao ALGORITMICA deste ciclo. EPSILON_START e MIN_EPSILON permanecem
+# iguais; apenas se prolonga a fase de exploracao para a representacao 16D.
 #
-#     actual_decay = max(DECAY_FLOOR, EPSILON_DECAY * min(3, 3/discovery_rate))
+# A formula em brain.decay_epsilon continua SUBTRATIVA POR bloco de 1.000:
+#
+#     actual_decay = max(DECAY_FLOOR,
+#                        EPSILON_DECAY * min(3, 3/discovery_rate))
 #     epsilon -= actual_decay
 #
-# Cedo, com muitos estados novos, o multiplicador e minusculo e o PISO manda.
-# Tarde, o multiplicador satura em 3 e vale o TETO (3 * EPSILON_DECAY).
+# Dados do v10/v7: 0.00046 / 0.00069 levaram epsilon ao piso por volta de
+# 475k-480k. A nova calibracao 0.00039 / 0.00058 projeta, usando a curva real de
+# descoberta anterior, o piso aproximadamente em 540k-555k. Num orcamento candidato
+# de 650k isso deixa ~100k para consolidacao em epsilon=0.05.
 #
-# ATENCAO: o decaimento e POR BLOCO, nao por batalha. Qualquer alteracao a
-# BLOCO_SALVAMENTO obriga a recalibrar estes dois valores.
-#
-# Alvo: 400.000 batalhas (40 repeticoes de 10k), blocos de 1.000 = 400 blocos,
-# com o epsilon a atingir o minimo a ~70% do treino, ou seja no bloco 280.
-# Piso 0,001 e teto 0,002 dao media estimada de 0,00127/bloco -> minimo ~bloco 275.
-#
-# Historico: com 0,002 e 0,003 (calibrados para 200k) o minimo caia no bloco 92 de
-# 200, ou seja a 46% do treino.
-#
-# VERIFICACAO na primeira noite (a taxa de descoberta com 60 times pode divergir):
-#     bloco  50 (50k)  -> epsilon ~0,336
-#     bloco 100 (100k) -> epsilon ~0,273
-#     bloco 200 (200k) -> epsilon ~0,146
-#     bloco 280 (280k) -> epsilon  0,050
-# Muito abaixo do esperado pede piso maior; acima, piso menor. E proporcional.
-#
-# RECALIBRACAO DE 29/08/2026, sobre dados REAIS e nao sobre estimativa.
-# O ciclo de 400k com 0,00067 e 0,001 atingiu o minimo no bloco 209 de 400 (52%),
-# quando o alvo era o bloco 280 (70%). O decaimento medio observado foi 0,001683 por
-# bloco, ou seja 1,683 vezes o piso: e essa razao, MEDIDA e nao suposta, que calibra
-# os valores abaixo.
-#
-#   minimo no bloco 280 (70%)  ->  piso 0,00074   decay 0,00050
-#   minimo no bloco 300 (75%)  ->  piso 0,00069   decay 0,00046   <== ESCOLHIDO
-#   minimo no bloco 320 (80%)  ->  piso 0,00065   decay 0,00044
-#
-# Alvo de 75% e nao 70% porque o requisito e "NO MINIMO 70%" e as tres calibracoes
-# anteriores erraram sempre por defeito (o minimo chegou cedo demais). Cinco pontos
-# de margem garantem o requisito mesmo com desvio semelhante.
-#
-# COMO CONFIRMAR QUE ESTA APLICADO: o cabecalho do treino imprime
-# "epsilon : 0.4 -> 0.05 (piso 0.00069)". Se disser 0.001, o ficheiro nao foi
-# substituido. Foi assim que se detetou, no ciclo v9, que a recalibracao anterior
-# nunca chegara ao disco: o piso impresso era 0,001 e o epsilon caia 0,002 por bloco
-# (= 3 x 0,00067, o TETO dos valores antigos).
-DECAY_FLOOR   = 0.00069
+# O bloco de aprendizagem continua em 1.000 batalhas; mudar a frequencia de SAVE nao
+# altera esta calibracao, porque decay/replay/metricas continuam a cada 1.000.
+DECAY_FLOOR = 0.00058
 NOVELTY_K = 30.0
 
 # ---- PROTOCOLO ----
-MAX_BATALHAS = 10_000        # teto do treino
-BLOCO_SALVAMENTO = 1000      # log + save do cérebro a cada 1000 batalhas
-                             # ATENCAO: alterar isto obriga a recalibrar
-                             # EPSILON_DECAY e DECAY_FLOOR (ver acima)
-CONCORRENCIA = 5             # batalhas simultâneas. Subiu de 3 para 5 em
-                             # 27/08/2026: a maquina fica dedicada ao treino.
-                             # Nao altera o que se aprende, so a ordem de
-                             # chegada das atualizacoes (logo as corridas
-                             # deixam de ser reproduziveis por semente).
-REPLAY_CICLOS = 20           # chamadas de replay por bloco (batch inalterado)
+MAX_BATALHAS = 10_000        # uma sessao/processo
+BLOCO_SALVAMENTO = 1000      # nome historico: agora e bloco de treino/log/decay/replay
+SAVE_EMERGENCIA = 5_000      # snapshot recuperavel no meio da sessao
+SAVE_OFICIAL = 10_000        # persistencia oficial ao concluir a sessao
+CONCORRENCIA = 5             # mantida para nao introduzir outra variavel neste ciclo
+REPLAY_CICLOS = 20           # inalterado
 BATTLE_FORMAT = "gen9nationaldex"
 AGENT = "blue"
 # Ancorados à RAIZ do projeto (ROOT), não ao CWD — evita criar artefatos/ em
@@ -130,28 +95,40 @@ WR_STABILITY_PP = 2.0
 STABILITY_BLOCKS = 5
 
 
-def proximo_indice_log(agente):
-    """Devolve o proximo numero de sessao livre para os ficheiros de log/grafico.
 
-    Cada execucao do treino cria os SEUS ficheiros (blue_treino_01.csv,
-    blue_treino_02.csv, ...), em vez de sobrescrever o mesmo CSV. Assim cada trecho
-    de treino fica isolado e comparavel, e o orquestrador de treino continuo nao
-    perde o historico das repeticoes anteriores.
-    """
-    os.makedirs(LOGS_DIR, exist_ok=True)
-    existentes = glob.glob(os.path.join(LOGS_DIR, f"{agente}_treino_*.csv"))
-    ids = []
-    for caminho in existentes:
-        m = re.fullmatch(rf"{agente}_treino_(\d+)\.csv", os.path.basename(caminho))
-        if m:
-            ids.append(int(m.group(1)))
-    return (max(ids) + 1) if ids else 1
+def _salvar_brain_verificado(agent, destino):
+    """Salva por staging e so substitui o destino se a serializacao terminou."""
+    staging = destino + ".stage"
+    for p in (staging, staging + ".tmp"):
+        if os.path.exists(p):
+            os.remove(p)
+    agent.brain.save_model(staging)
+    if not os.path.exists(staging) or os.path.getsize(staging) == 0:
+        raise RuntimeError(f"Falha ao persistir cerebro em {destino}")
+    os.replace(staging, destino)
+
+
+def _tamanho_ultimo_save_kb(brain_path, emergency_path):
+    caminho = emergency_path if os.path.exists(emergency_path) else brain_path
+    return os.path.getsize(caminho) / 1024.0 if os.path.exists(caminho) else 0.0
 
 
 async def main():
     os.makedirs(BRAINS_DIR, exist_ok=True)
     os.makedirs(LOGS_DIR, exist_ok=True)
     brain_path = os.path.join(BRAINS_DIR, f"{AGENT}_brain.pkl")
+    emergency_brain_path = os.path.join(BRAINS_DIR, f"{AGENT}_brain_emergency.pkl")
+    csv_path = os.path.join(LOGS_DIR, f"{AGENT}_treino_emergencia.csv")
+
+    # Nunca sobrescrever uma sessao interrompida. O orquestrador remove estes
+    # ficheiros apenas depois de uma sessao completa ser consolidada.
+    restos = [p for p in (emergency_brain_path, csv_path) if os.path.exists(p)]
+    if restos:
+        print("[TREINO] RECUSADO: existe recuperacao pendente de sessao anterior:")
+        for p in restos:
+            print(f"         {p}")
+        print("         Preserve/recupere esses ficheiros antes de iniciar nova sessao.")
+        return False
 
     agent = HybridAgent(
         account_configuration=AccountConfiguration("BlueTrain", None),
@@ -193,37 +170,20 @@ async def main():
         log_level=logging.CRITICAL,
     )
 
-    sessao = proximo_indice_log(AGENT)
-    csv_path = os.path.join(LOGS_DIR, f"{AGENT}_treino_{sessao:02d}.csv")
     with open(csv_path, "w", newline="") as f:
         csv.writer(f).writerow(
-            # COLUNAS DE CONVERGENCIA (30/08/2026).
-            #
-            # `Visitas_Est` (media simples de visitas) SAIU. Tratava todos os estados
-            # por igual, e medido nos cerebros de 400k 16,7% dos estados absorvem
-            # 90,7% das decisoes. A media respondia a pergunta errada.
-            # `Confianca` (visit_counts>=3) tambem saiu: limiar baixo demais para
-            # significar confianca.
-            #
-            # Entram cinco. `Cobertura_Pond` e `Descoberta_Turno` medem TERRENO;
-            # `Churn_Politica`, `Delta_Q` e `Margem_Decisao` medem CONVERGENCIA, que
-            # e outra coisa: a politica pode estar estavel com cobertura a crescer,
-            # e pode haver cobertura alta com a decisao ainda a oscilar.
             ["Batalhas", "WinRate_Bloco", "Vitorias", "Derrotas", "Estados_Q", "Epsilon",
              "Cobertura_Pond", "Descoberta_Turno", "Churn_Politica", "Delta_Q",
-             "Margem_Decisao", "Estados_Maduros",
-             "Reward", "Ghost_Battles",
+             "Margem_Decisao", "Estados_Maduros", "Reward", "Ghost_Battles",
              "Latencia_ms", "Margem_Media", "Duracao_Media", "Auto_Ties", "Tamanho_KB", "Tempo_s"])
 
-    # SAVE IMEDIATO: cria o .pkl logo no arranque, para o ficheiro existir (e o
-    # caminho ser validado) desde o inicio, em vez de so ao fim do 1o bloco de 1000.
-    agent.save_brain()
     if os.path.exists(brain_path):
         estado_cerebro = (f"{brain_path}  "
                           f"({os.path.getsize(brain_path)/1024:.1f} KB, "
                           f"{len(agent.brain.q_table)} estados)")
     else:
-        estado_cerebro = f"FALHA A CRIAR: {brain_path} (progresso NAO sera persistido)"
+        estado_cerebro = (f"novo em RAM (primeiro save de emergencia em {SAVE_EMERGENCIA:,}; "
+                          f"oficial em {SAVE_OFICIAL:,})")
 
     rel = RelatorioConsola(agente="BLUE", descricao="Hibrido (Q-Learning + Instinto)")
     rel.cabecalho(
@@ -231,21 +191,22 @@ async def main():
             "Oponente": "Instinto-puro",
             "Formato": BATTLE_FORMAT,
             "Max batalhas": MAX_BATALHAS,
-            "Save a cada": f"{BLOCO_SALVAMENTO} batalhas",
+            "Bloco treino/log": f"{BLOCO_SALVAMENTO} batalhas",
+            "Save cerebro": f"emergencia {SAVE_EMERGENCIA:,} / oficial {SAVE_OFICIAL:,}",
             "Concorrencia": CONCORRENCIA,
             "Timer do servidor": "DESLIGADO",
             "alpha": f"{ALPHA_START} -> {MIN_ALPHA}",
-            "epsilon": f"{EPSILON_START} -> {MIN_EPSILON} (piso {DECAY_FLOOR})",
+            "epsilon": f"{EPSILON_START} -> {MIN_EPSILON} (piso decay {DECAY_FLOOR})",
             "Convergencia": f"{WR_STABILITY_PP}pp em {STABILITY_BLOCKS} blocos, eps no minimo",
         },
         caminhos={
-            "Sessao": f"#{sessao:02d}",
             "Cerebro": estado_cerebro,
-            "Log CSV": csv_path,
+            "CSV emergencia": csv_path,
         })
 
     total, recent_wr, t0 = 0, [], time.time()
     convergiu = "NAO"
+    abortado = False
     blocos_estaveis = 0
     while total < MAX_BATALHAS:
         prev_states = len(agent.brain.q_table)
@@ -268,26 +229,35 @@ async def main():
             agent.replay()
         new_states = len(agent.brain.q_table) - prev_states
         agent.brain.decay_epsilon(new_states=new_states, battles_in_block=BLOCO_SALVAMENTO)
-        agent.save_brain()
 
-        # As metricas de convergencia guardam snapshot para o bloco seguinte, logo
-        # tem de ser chamadas UMA vez por bloco e sempre na mesma ordem.
+        # Metricas de convergencia continuam UMA vez por bloco de 1k. A frequencia
+        # de persistencia nao altera replay, decay, reward ou atualizacoes Q.
         conv = agent.brain.metricas_convergencia()
-        _, avg_visits, conf = agent.brain.inspect_brain()   # so para o relatorio
+        _, avg_visits, conf = agent.brain.inspect_brain()
         ghost = len(agent.brain.active_battles_reward)
-        wall = time.time() - t0
-        tamanho_kb = os.path.getsize(brain_path) / 1024.0 if os.path.exists(brain_path) else 0.0
 
-        # Acesso TOLERANTE as metricas: uma metrica opcional em falta (por exemplo
-        # numa versao anterior do base_agent) nao pode parar o treino.
         lat = m.get("latencia_ms", 0.0)
         marg = m.get("margem_media", 0.0)
         dur = m.get("duracao_media", 0.0)
         ties = m.get("auto_ties", 0)
-        # Recompensa REAL do bloco. A coluna anterior usava brain.episode_reward_max,
-        # que ficava presa no sentinela (-9999) e nao media nada.
         reward = m.get("reward_batalha", 0.0)
-        reward_turno = m.get("reward_turno", 0.0)
+
+        # Verificar divergencia ANTES de qualquer save. Assim um bloco doente nunca
+        # substitui o ultimo checkpoint saudavel.
+        ok_div, maior_q, msg_div = agent.brain.verificar_divergencia()
+
+        if ok_div:
+            if total == SAVE_EMERGENCIA:
+                _salvar_brain_verificado(agent, emergency_brain_path)
+                print(f"[{AGENT.upper()}] checkpoint de emergencia salvo em {total:,} batalhas")
+            elif total == SAVE_OFICIAL:
+                _salvar_brain_verificado(agent, brain_path)
+                if os.path.exists(emergency_brain_path):
+                    os.remove(emergency_brain_path)
+                print(f"[{AGENT.upper()}] cerebro oficial salvo em {total:,} batalhas")
+
+        tamanho_kb = _tamanho_ultimo_save_kb(brain_path, emergency_brain_path)
+        wall = time.time() - t0
 
         with open(csv_path, "a", newline="") as f:
             csv.writer(f).writerow(
@@ -315,18 +285,15 @@ async def main():
             "auto_ties": ties, "tempo_s": wall, "reward": reward,
         })
 
-        # SALVAGUARDA: se os Q-values divergirem, parar JA. Continuar so queima
-        # tempo a aprender uma politica corrompida.
-        ok_div, maior_q, msg_div = agent.brain.verificar_divergencia()
         if not ok_div:
             print()
             print("!" * 70)
-            print(f"  [%s] TREINO ABORTADO — DIVERGENCIA DETETADA" % "BLUE")
+            print(f"  [BLUE] TREINO ABORTADO — DIVERGENCIA DETETADA")
             print(f"  {msg_div}")
-            print("  O cerebro NAO foi corrompido no disco: o ultimo save e anterior")
-            print("  a este bloco. Reduz alpha ou lambda antes de retomar.")
+            print("  Nenhum bloco divergente foi salvo no brain oficial/emergencia.")
             print("!" * 70)
             convergiu = f"ABORTADO (divergencia: maior |Q| = {maior_q:,.0f})"
+            abortado = True
             break
 
         recent_wr.append(wr)
@@ -347,43 +314,40 @@ async def main():
             if max(w) - min(w) <= WR_STABILITY_PP:
                 blocos_estaveis += 1
 
-    # ORCAMENTO FIXO: o treino corre SEMPRE as MAX_BATALHAS. Nao ha paragem
-    # antecipada. Para a comparacao entre agentes ser controlada, todos tem de
-    # receber exatamente o mesmo orcamento de treino; parar mais cedo num deles
-    # invalidaria a comparacao (e o criterio de estabilidade disparava por acaso:
-    # com n=1000 o desvio padrao do WR e 1.58pp, e 5 blocos aleatorios ficam dentro
-    # de 2.0pp em ~10% das janelas).
+    if abortado:
+        resultados = {
+            "Convergencia": convergiu,
+            "Cerebro oficial": brain_path,
+            "Cerebro emergencia": emergency_brain_path if os.path.exists(emergency_brain_path) else "(nao criado)",
+            "CSV emergencia": csv_path,
+        }
+        rel.resumo_final(extra=resultados)
+        return False
+
+    # Orcamento fixo da SESSAO cumprido. O brain oficial ja foi salvo no bloco 10k.
     convergiu = (f"orcamento cumprido: {total:,} batalhas | "
                  f"{blocos_estaveis} janela(s) de {STABILITY_BLOCKS} blocos "
                  f"dentro de {WR_STABILITY_PP}pp (indicador, nao criterio de paragem)")
 
-    agent.save_brain()
+    if not os.path.exists(brain_path) or os.path.getsize(brain_path) == 0:
+        raise RuntimeError("Sessao terminou sem brain oficial persistido.")
 
-    # Analise automatica: grafico da sessao + dashboard do cerebro.
-    graf_path = os.path.join(LOGS_DIR, f"{AGENT}_grafico_{sessao:02d}.png")
-    resultados = {"Convergencia": convergiu}
-    try:
-        generate_graph(csv_path, graf_path,
-                       agent="Blue", opponent="Instinto", total_battles=total,
-                       final_win_rate=recent_wr[-1] if recent_wr else 0.0,
-                       final_states=len(agent.brain.q_table))
-        resultados["Grafico"] = graf_path
-    except Exception as e:
-        resultados["Grafico"] = f"FALHOU: {e}"
-    try:
-        analyze_brain(brain_path, os.path.join(LOGS_DIR, "analise"), f"Blue_s{sessao:02d}")
-        resultados["Dashboard"] = os.path.join(LOGS_DIR, "analise")
-    except Exception as e:
-        resultados["Dashboard"] = f"FALHOU: {e}"
-    resultados["Cerebro"] = brain_path
-
+    resultados = {
+        "Convergencia": convergiu,
+        "Cerebro": brain_path,
+        "CSV emergencia": csv_path,
+        "Analise": "centralizada no treino_continuo; marco a cada 50k",
+    }
     rel.resumo_final(extra=resultados)
+    return True
 
 
 if __name__ == "__main__":
     if sys.platform == "win32":
         loop = asyncio.SelectorEventLoop()
         asyncio.set_event_loop(loop)
-        loop.run_until_complete(main())
+        ok = loop.run_until_complete(main())
     else:
-        asyncio.run(main())
+        ok = asyncio.run(main())
+    if not ok:
+        raise SystemExit(2)

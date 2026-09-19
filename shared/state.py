@@ -494,7 +494,11 @@ class StateParser:
         """Funde tempo de jogo e contagem de peças em 5 contextos, ignorando
         flutuação de HP para evitar ruído."""
         my_alive = len([m for m in battle.team.values() if not m.fainted])
-        opp_alive = len([m for m in battle.opponent_team.values() if not m.fainted])
+        # O roster adversario e revelado no team preview, mas `opponent_team` pode
+        # passar a representar apenas os Pokemon efetivamente revelados depois do
+        # arranque. Usa a fusao preview+revelados da fisica para nao transformar
+        # turno 1 em BRAWL/DOMINATING por subcontagem do adversario.
+        opp_alive, _ = self.physics.equipa_adversaria(battle)
         total_alive = my_alive + opp_alive
         piece_advantage = my_alive - opp_alive
 

@@ -640,8 +640,7 @@ class InstinctPolicy:
                     return True
         return False
 
-    @staticmethod
-    def trick_room_ativo(battle):
+    def trick_room_ativo(self, battle):
         try:
             # MIGRADO PARA `physics.tem` EM 03/09/2026: o Trick Room NUNCA foi
             # detectado pela policy. Uma equipa de Trick Room jogava como equipa
@@ -1396,7 +1395,7 @@ class InstinctPolicy:
                     ranking_list.append(intent)
 
         # Hazards desvalorizam quando restam poucos oponentes
-        opp_alive = len([m for m in battle.opponent_team.values() if not m.fainted])
+        opp_alive, _ = self.physics.equipa_adversaria(battle)
         if opp_alive <= 2 and "HAZARD" in ranking_list:
             ranking_list.remove("HAZARD")
             ranking_list.append("HAZARD")

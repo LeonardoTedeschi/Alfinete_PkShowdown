@@ -8,10 +8,9 @@ do instinto; o Blue passa o ranking do instinto como prior de exploração.
 CORREÇÕES aplicadas nesta versão (decididas ao longo do projeto):
   (1) replay_experience: REMOVIDO o corpo duplicado que reprocessava o batch e
       injetava ruído (o método rodava os updates duas vezes).
-  (2) DPRS -> BÓNUS DE NOVIDADE: o potencial dinâmico antigo saturava em 0 (não dava
-      gradiente) e premiava proximidade ao recorde passado (conservador). Substituído
-      por um bónus de novidade +k/sqrt(visits(state)), que incentiva explorar estados
-      pouco visitados — o mecanismo pelo qual o "aluno" pode superar o "mestre".
+  (2) DPRS dinamico REMOVIDO do PBRS. A funcao historica de novidade
+      +k/sqrt(visits(state)) permanece no ficheiro apenas para compatibilidade, mas
+      nao possui chamadores no treino actual e NAO entra em reward/PBRS/policy.
   (3) DESFIBRILADOR removido: apply_epsilon_shock_if_stagnant era um no-op preso numa
       docstring; retirado para simplificar a atribuição de causa nos experimentos.
   (4) TIPO uniformizado: estados inicializam sempre com np.zeros (antes decide_action
@@ -118,6 +117,16 @@ class BlueBrain:
 
         self.q_table = {}
         self.visit_counts = {}
+
+        # MEDICAO N(s,a) POS-MATURIDADE (17/09/2026).
+        # Objetivo: distinguir "estado maduro" de "acoes realmente experimentadas
+        # dentro desse estado". Para nao duplicar a Q-table de 1,7M estados, so
+        # passamos a persistir contagens quando o estado ja atingiu LIMIAR_MADURO.
+        # Assim medimos exatamente a politica no nucleo que concentra ~70% das
+        # decisoes, que e a pergunta causal atual, com custo de memoria controlado.
+        self.action_choice_counts = {}   # estado -> np.uint32[len(actions)]
+        self.action_valid_masks = {}     # estado -> bitmask das acoes vistas como validas
+
         self._qtable_lock = threading.Lock()
 
         # ==================================================================
@@ -160,8 +169,8 @@ class BlueBrain:
         self.episode_reward_min = 9999.0
         self.active_battles_reward = {}
 
-        # BÓNUS DE NOVIDADE: intensidade do incentivo a estados pouco visitados.
-        # bonus = novelty_k / sqrt(visits). Ajustável por fase se necessário.
+        # Parametro historico da funcao de novidade. A funcao esta INATIVA na
+        # configuracao actual (sem chamadores); manter apenas por compatibilidade.
         self.novelty_k = novelty_k
 
         # ------------------------------------------------------------------
@@ -476,16 +485,15 @@ class BlueBrain:
             self.episode_reward_min = final_reward
 
     # ======================================================================
-    # POTENCIAL (shaping estático) + BÓNUS DE NOVIDADE
+    # POTENCIAL (shaping estático) + FUNCAO DE NOVIDADE INATIVA
     # ======================================================================
 
     def _get_novelty_bonus(self, state):
-        """CORREÇÃO (2): bónus de novidade que substitui o DPRS saturado.
+        """Funcao historica de novidade, actualmente SEM chamadores no treino.
 
-        Incentiva o agente a visitar estados pouco explorados. Decai com a raiz do
-        número de visitas: estados novos valem novelty_k, estados maduros ~0. É o
-        mecanismo exploratório que permite ao aluno desviar-se do prior do instinto
-        e, potencialmente, superar o mestre.
+        Mantida apenas para compatibilidade/experimentos. Nao entra em PBRS, reward
+        nem na policy da configuracao v11/v8. Qualquer futura exploracao N(s,a) deve
+        ser introduzida explicitamente como experimento separado.
         """
         visits = self.visit_counts.get(self._get_abstract_state(state), 0)
         return self.novelty_k / np.sqrt(visits + 1.0)
@@ -1234,10 +1242,86 @@ class BlueBrain:
                 self.ultima_foi_exploratoria = False
                 action_idx = best_action_idx
 
+        # Diagnostico puro: mede a distribuicao de escolhas nos estados maduros.
+        self._record_action_choice(abs_state, action_idx, valid_actions)
+
         chosen_action_str = self.actions[action_idx]
         if chosen_action_str.endswith("_MEC"):
             return (chosen_action_str.replace("_MEC", ""), "ACTIVATE")
         return (chosen_action_str, None)
+
+
+    def _record_action_choice(self, abs_state, action_idx, valid_actions):
+        """Regista N(s,a) apenas depois de o estado estar maduro.
+
+        A medicao NAO participa de reward, PBRS, Q-update, replay ou escolha de acao.
+        E diagnostico puro. `action_valid_masks` acumula quais acoes chegaram a ser
+        legais no mesmo estado abstrato, permitindo distinguir repertorio disponivel
+        de repertorio efetivamente escolhido.
+        """
+        if self.visit_counts.get(abs_state, 0) < self.LIMIAR_MADURO:
+            return
+        # `decide_action` pode correr em varias batalhas concorrentes. As contagens
+        # diagnosticas usam o mesmo lock da Q-table para nao perder incrementos.
+        with self._qtable_lock:
+            counts = self.action_choice_counts.get(abs_state)
+            if counts is None:
+                counts = np.zeros(len(self.actions), dtype=np.uint32)
+                self.action_choice_counts[abs_state] = counts
+            counts[action_idx] += 1
+
+            mask = self.action_valid_masks.get(abs_state, 0)
+            for action in valid_actions:
+                try:
+                    idx = self.actions.index(action)
+                except ValueError:
+                    continue
+                mask |= (1 << idx)
+            self.action_valid_masks[abs_state] = mask
+
+    def metricas_acoes_por_estado(self):
+        """Resumo ponderado da diversidade de decisoes em estados maduros medidos."""
+        total_dec = 0
+        soma_dominante = 0
+        soma_entropia = 0.0
+        soma_efetivas = 0.0
+        soma_cobertura = 0.0
+        peso_cobertura = 0
+        estados = 0
+        for estado, counts in self.action_choice_counts.items():
+            n = int(np.sum(counts))
+            if n <= 0:
+                continue
+            estados += 1
+            total_dec += n
+            nz = counts[counts > 0].astype(float)
+            soma_dominante += int(np.max(counts))
+            p = nz / n
+            h = float(-np.sum(p * np.log(p))) if len(p) else 0.0
+            soma_entropia += h * n
+            soma_efetivas += float(np.exp(h)) * n
+
+            valid_mask = int(self.action_valid_masks.get(estado, 0))
+            validas = valid_mask.bit_count()
+            escolhidas = int(np.count_nonzero(counts))
+            if validas > 0:
+                soma_cobertura += (escolhidas / validas) * n
+                peso_cobertura += n
+
+        if total_dec <= 0:
+            return {
+                "estados_medidos": 0, "decisoes_medidas": 0,
+                "acao_dominante_pct": 0.0, "entropia_media": 0.0,
+                "acoes_efetivas": 0.0, "cobertura_acoes_pct": 0.0,
+            }
+        return {
+            "estados_medidos": estados,
+            "decisoes_medidas": total_dec,
+            "acao_dominante_pct": soma_dominante / total_dec * 100.0,
+            "entropia_media": soma_entropia / total_dec,
+            "acoes_efetivas": soma_efetivas / total_dec,
+            "cobertura_acoes_pct": (soma_cobertura / peso_cobertura * 100.0) if peso_cobertura else 0.0,
+        }
 
     # ======================================================================
     # DECAIMENTO DE EPSILON/ALPHA
@@ -1271,6 +1355,11 @@ class BlueBrain:
     # ======================================================================
 
     def _get_root_path(self, filename):
+        # Caminhos absolutos sao usados pelos scripts de treino para os snapshots
+        # oficial/emergencia em artefatos/brains. Mantemos caminhos relativos
+        # compativeis com o comportamento historico (relativos a qlearning/).
+        if os.path.isabs(filename):
+            return filename
         current_dir = os.path.dirname(os.path.abspath(__file__))
         return os.path.join(current_dir, filename)
 
@@ -1280,6 +1369,9 @@ class BlueBrain:
         data = {
             "q_table": self.q_table,
             "visit_counts": self.visit_counts,
+            "actions": self.actions,
+            "action_choice_counts": self.action_choice_counts,
+            "action_valid_masks": self.action_valid_masks,
             # SNAPSHOT DE POLITICA (30/08/2026). Cada sessao de 10k e um PROCESSO
             # novo; sem persistir, o churn saia sempre a -1.0 no primeiro bloco de
             # cada sessao e perdiam-se 40 pontos de medida por ciclo. Sao ~72k
@@ -1297,12 +1389,27 @@ class BlueBrain:
             # so o piso absoluto, poluindo a memoria com episodios medianos.
             "recompensas_recentes": self.recompensas_recentes,
         }
+        # Persistencia atomica. O codigo antigo engolia qualquer Exception e o
+        # chamador podia acreditar que um checkpoint existia quando a gravacao tinha
+        # falhado. Agora o save devolve True/False, imprime a causa e nunca substitui
+        # o ultimo ficheiro valido por uma escrita parcial.
         try:
+            pasta = os.path.dirname(os.path.abspath(filepath))
+            os.makedirs(pasta, exist_ok=True)
             with open(temp_filepath, "wb") as f:
                 pickle.dump(data, f)
+                f.flush()
+                os.fsync(f.fileno())
             os.replace(temp_filepath, filepath)
-        except Exception:
-            pass
+            return True
+        except Exception as e:
+            try:
+                if os.path.exists(temp_filepath):
+                    os.remove(temp_filepath)
+            except OSError:
+                pass
+            print(f"[CÉREBRO] Erro ao salvar em {filepath}: {e}")
+            return False
 
     def load_model(self, filename="blue_brain.pkl"):
         filepath = self._get_root_path(filename)
@@ -1312,6 +1419,10 @@ class BlueBrain:
                     data = pickle.load(f)
                 self.q_table = data.get("q_table", {})
                 self.visit_counts = data.get("visit_counts", {})
+                # Compatibilidade: cerebros anteriores a 17/09/2026 nao possuem
+                # N(s,a); a medicao comeca vazia e nao tenta reconstruir historia.
+                self.action_choice_counts = data.get("action_choice_counts", {})
+                self.action_valid_masks = data.get("action_valid_masks", {})
                 # `.get` com None: um .pkl anterior a 30/08/2026 nao tem estas
                 # chaves, e nesse caso o churn arranca a -1.0 no primeiro bloco,
                 # que e o comportamento correcto (nao ha com que comparar).

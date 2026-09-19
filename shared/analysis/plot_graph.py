@@ -1,8 +1,9 @@
 """
-shared/analysis/plot_graph.py — grafico de evolucao de uma sessao de treino.
+shared/analysis/plot_graph.py — grafico de evolucao cumulativa do treino.
 
 Plota Win Rate (por bloco), Recompensa e Epsilon num grafico de tres eixos.
-Serve Blue e Green. Chamado ao fim de cada treino, ou avulso sobre um CSV.
+Serve Blue e Green. No pipeline v11/v8 recebe prioritariamente o CSV consolidado,
+permitindo fotografias cumulativas (50k, 100k, ...) sem perder nenhum ponto.
 
 LEITURA POR NOME DE COLUNA (correcao importante): a versao anterior lia as colunas
 por POSICAO (row[2] como epsilon, row[3] como reward). Quando o CSV passou a ter
@@ -14,9 +15,9 @@ Colunas esperadas (por nome; extras sao ignoradas, ausentes ficam vazias):
     Batalhas, WinRate_Bloco, Epsilon, Reward, Estados_Q, Latencia_ms,
     Margem_Media, Duracao_Media, Auto_Ties, Tempo_s
 
-Uso avulso, da raiz do projeto:
-    python -m shared.analysis.plot_graph --csv artefatos/logs/blue_treino_01.csv \
-        --out artefatos/logs/blue_grafico_01.png --agent Blue
+Uso avulso, da raiz do projeto (pipeline actual):
+    python -m shared.analysis.plot_graph --csv artefatos/logs/blue_treino_consolidado.csv \
+        --out artefatos/logs/blue_treino_atual.png --agent Blue
 """
 
 import argparse
@@ -142,8 +143,11 @@ def generate_graph(csv_path, img_output_path, agent="Agente", opponent="Instinto
     cor_wr = '#2563eb'
     ax1.set_xlabel('Batalhas Completadas', fontweight='bold', color='#495057')
     ax1.set_ylabel('Win Rate do Bloco (%)', color=cor_wr, fontweight='bold')
+    # O consolidado pode chegar a centenas de pontos (1 por 1k). A linha usa TODOS
+    # os dados; apenas os marcadores sao espacados para o grafico continuar legivel.
+    markevery = max(1, len(battles) // 100)
     linhas = ax1.plot(battles, win_rates, color=cor_wr, linewidth=2.5, marker='o',
-                      markersize=4, label='Win Rate (Bloco)', zorder=3)
+                      markersize=4, markevery=markevery, label='Win Rate (Bloco)', zorder=3)
     ax1.tick_params(axis='y', labelcolor=cor_wr)
     ax1.set_ylim(0, 100)
     # GRELHA FINA NO WIN RATE (29/08/2026). O matplotlib escolhia marcas de 20 em 20,
@@ -171,7 +175,8 @@ def generate_graph(csv_path, img_output_path, agent="Agente", opponent="Instinto
         ax3.spines['right'].set_position(('outward', 60))
         cor_e = '#059669'
         linhas += ax3.plot(battles, epsilons, color=cor_e, linewidth=2.0, linestyle='-.',
-                           alpha=0.85, marker='s', markersize=3, label='Epsilon', zorder=2)
+                           alpha=0.85, marker='s', markersize=3, markevery=markevery,
+                           label='Epsilon', zorder=2)
         ax3.set_ylabel('Epsilon (exploracao)', color=cor_e, fontweight='bold')
         ax3.tick_params(axis='y', labelcolor=cor_e)
         ax3.set_ylim(0, max(epsilons) * 1.2 if max(epsilons) > 0 else 1.0)
