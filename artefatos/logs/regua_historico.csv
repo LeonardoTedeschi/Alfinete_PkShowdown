@@ -1,5 +1,0 @@
-Data,Etiqueta,Estado,Pool,Adversario,Semente,Batalhas,Vitorias,Derrotas,Empates,WinRate,ErroPadrao_pp,Duracao_Media,Duracao_Max,Margem_Media,Auto_Ties,Tempo_s,Sessao
-20260919_134302,v22-pre-B11-G8-clean,INCOMPLETA,treino,MaxDamage,42,10000,,,,,,,,,,,09
-20260919_134302,v22-pre-B11-G8-clean,OK,treino,MaxDamage,42,10000,7469,2531,0,74.69,0.43,25.5,179,2.15,0,680,09
-20260919_135553,v22-pre-B11-G8-clean,INCOMPLETA,eval,MaxDamage,42,10000,,,,,,,,,,,10
-20260919_135553,v22-pre-B11-G8-clean,OK,eval,MaxDamage,42,10000,7480,2520,0,74.80,0.43,27.7,196,2.16,0,715,10

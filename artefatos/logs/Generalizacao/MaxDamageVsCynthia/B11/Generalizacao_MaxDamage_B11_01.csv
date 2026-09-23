@@ -1,0 +1,2 @@
+Data,Ciclo,Tentativa,Etiqueta,Regua,Regua_Versao,Formato,AI_Profile,Semente,Agente,Batalhas_Por_Condicao,WR_Treino,WR_Holdout,Delta_Treino_Menos_Holdout_pp,EP_Diferenca_pp,Margem_Treino,Margem_Holdout,Duracao_Treino,Duracao_Holdout,Ties_Treino,Ties_Holdout,Estados_Novos_Treino,Estados_Novos_Holdout,Tempo_Treino_s,Tempo_Holdout_s
+20260921_140306,B11,1,pré-B11,CynthiaPlatinumBot,1.0,gen9nationaldex,AI_FLAG_BASIC|AI_FLAG_EVAL_ATTACK|AI_FLAG_EXPERT,42,MAXDAMAGE,10000,12.11,8.38,+3.73,0.43,-1.00,-1.09,22.1,23.5,0,0,0,0,1398.1,1117.3
