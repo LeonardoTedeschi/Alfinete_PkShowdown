@@ -15,6 +15,9 @@ CORREÇÕES aplicadas nesta versão (decididas ao longo do projeto):
       docstring; retirado para simplificar a atribuição de causa nos experimentos.
   (4) TIPO uniformizado: estados inicializam sempre com np.zeros (antes decide_action
       usava lista e _apply_q_update usava np.zeros — coexistência frágil).
+  (5) REPLAY ADAPTATIVO por pressão inversa: removida a alternância binária baseada
+      em média móvel de single_visit_ratio; a composição fresh/consolidação passa a
+      responder continuamente à cauda longa observada e fica auditável no .pkl.
 """
 
 import numpy as np
@@ -220,7 +223,42 @@ class BlueBrain:
         #      quota nunca sobre-representar um conjunto pequeno.
         self.elite_memory = deque(maxlen=elite_maxlen)
         self.elite_maxlen = elite_maxlen
-        self.elite_quota = elite_quota
+
+        # Override EXPERIMENTAL para ablações controladas do Hall da Fama.
+        #
+        # Sem a variável de ambiente, o comportamento permanece exatamente o
+        # configurado pelo construtor (default: elite_quota=0.10).
+        #
+        # Exemplo para desligar SOMENTE a injeção da elite no replay:
+        #     $env:ALFINETE_ELITE_QUOTA = "0"
+        #
+        # A elite continua a ser coletada normalmente; apenas deixa de ocupar
+        # posições no batch de replay enquanto a quota efetiva for zero.
+        _elite_quota_env = os.getenv("ALFINETE_ELITE_QUOTA")
+        if _elite_quota_env is None or not _elite_quota_env.strip():
+            self.elite_quota = float(elite_quota)
+            _elite_quota_origem = "default"
+        else:
+            try:
+                self.elite_quota = float(_elite_quota_env)
+            except ValueError as exc:
+                raise ValueError(
+                    "ALFINETE_ELITE_QUOTA deve ser um número entre 0.0 e 1.0 "
+                    f"(recebido: {_elite_quota_env!r})."
+                ) from exc
+            _elite_quota_origem = "env:ALFINETE_ELITE_QUOTA"
+
+        if not 0.0 <= self.elite_quota <= 1.0:
+            raise ValueError(
+                "elite_quota efetiva deve estar entre 0.0 e 1.0 "
+                f"(recebido: {self.elite_quota})."
+            )
+
+        print(
+            f"[CÉREBRO] elite_quota efetiva = {self.elite_quota:.3f} "
+            f"({_elite_quota_origem})"
+        )
+
         self.active_battles_transitions = {}
         self.recompensas_recentes = deque(maxlen=1000)
         self.elite_percentil = 0.95      # entra quem estiver no topo dos 5% recentes
@@ -228,35 +266,39 @@ class BlueBrain:
         self.elite_reward_minimo = 100.0 # piso absoluto, herdado do critério antigo
 
         # ==================================================================
-        # PROPOSTA B (11/09/2026): LIMIAR DE FRESCURA RELATIVO
+        # REPLAY ADAPTATIVO POR PRESSAO INVERSA (26/09/2026)
         # ==================================================================
-        # O `replay_experience` escolhe entre dois modos conforme a fraccao de
-        # transicoes em estados de 1 visita (`single_visit_ratio`):
+        # A Q-table do ALFINETE tem distribuicao de cauda longa: muitos estados sao
+        # vistos uma unica vez e uma minoria concentra revisitas. O mecanismo anterior
+        # comparava a fraccao de estados de 1 visita com uma media movel e alternava
+        # abruptamente entre PRIORIZAR FRESCOS e CONSOLIDAR. Essa comparacao nao mede
+        # uma derivada real e pode oscilar apenas por ruido amostral. Alem disso, a
+        # historia usada pela decisao nao era persistida entre processos de 10k.
         #
-        #     ratio > 0,30  -> PRIORIZAR FRESCOS   (70% do lote no balde de 1 visita)
-        #     caso contrario -> CONSOLIDAR MADUROS (60% do lote no balde de 2 a 4)
+        # O novo replay nao usa modos binarios. A amostra atual e classificada por
+        # visitas reais (replay nao incrementa visit_counts):
+        #   FRESH       -> visitas <= 1
+        #   DEVELOPING  -> 2 <= visitas < LIMIAR_MADURO
+        #   MATURE      -> visitas >= LIMIAR_MADURO
         #
-        # O limiar 0,30 foi calibrado com ~500 mil estados. Com os 1,7 MILHOES do
-        # v10/v7, 48% dos estados tem uma so visita e o ratio fica quase sempre acima
-        # de 0,30: **o modo de CONSOLIDAR quase nunca corre**. O replay passou o
-        # treino inteiro a perseguir novidade e nunca a fixar o que ja tinha sido
-        # visto, o que e consistente com a cobertura ter estagnado nos 70%.
+        # A fraccao FRESH observada gera FEEDBACK INVERSO: quanto mais a memoria esta
+        # dominada por estados frescos, maior a quota de consolidacao de estados ja
+        # revisitados. Dos exemplos normais do replay, 20% ficam reservados a
+        # transicoes de alto impacto; os outros 80% sao divididos de forma continua,
+        # com limites de 20% a 60% para impedir que frescura ou consolidacao desapareca.
         #
-        # A CORRECCAO E TORNAR O LIMIAR RELATIVO AO PROPRIO TREINO. Guarda-se a media
-        # movel do ratio e compara-se o valor actual com ela:
-        #
-        #     ratio acima da media  -> a novidade esta a ACELERAR   -> priorizar frescos
-        #     ratio abaixo da media -> a novidade esta a ABRANDAR   -> consolidar
-        #
-        # Assim os dois modos correm em QUALQUER escala de Q-table, porque o criterio
-        # deixa de ser um valor absoluto e passa a ser a DERIVADA do proprio processo.
-        #
-        # O limiar absoluto fica como rede para o arranque: enquanto nao houver
-        # amostras suficientes para uma media fiavel, usa-se o comportamento antigo.
-        # Isso preserva o inicio do treino, que e onde o 0,30 estava bem calibrado.
-        self.single_visit_ratio_hist = deque(maxlen=50)
-        self.single_visit_ratio_min_amostras = 10
-        self.single_visit_ratio_limiar_absoluto = 0.30
+        # Estes acumuladores sao apenas diagnosticos. Sao persistidos no .pkl para
+        # permitir auditar a composicao real ao longo das sessoes independentes de 10k.
+        self.replay_adaptive_stats = {
+            "calls": 0,
+            "sum_observed_fresh_ratio": 0.0,
+            "sum_observed_developing_ratio": 0.0,
+            "sum_observed_mature_ratio": 0.0,
+            "sum_requested_fresh_quota": 0.0,
+            "sum_requested_consolidation_quota": 0.0,
+            "sum_effective_fresh_ratio": 0.0,
+            "sum_effective_consolidation_ratio": 0.0,
+        }
 
         # Ações: base + variante _MEC (mecânica) para as não-switch
         self.base_actions = [
@@ -1053,53 +1095,55 @@ class BlueBrain:
         sample_size = min(4000, len(self.memory))
         memory_list = random.sample(list(self.memory), sample_size)
 
-        single_visit_count = 0
-        bucket_1_visit = []
-        bucket_2_to_4 = []
+        bucket_fresh = []
+        bucket_consolidacao = []
         bucket_high_reward = []
+        fresh_count = 0
+        developing_count = 0
+        mature_count = 0
 
         for m in memory_list:
             state, action_str, reward, next_state = m
             abs_state = self._get_abstract_state(state)
             visits = self.visit_counts.get(abs_state, 0)
+
             if visits <= 1:
-                single_visit_count += 1
-                bucket_1_visit.append(m)
-            elif 2 <= visits <= 4:
-                bucket_2_to_4.append(m)
+                fresh_count += 1
+                bucket_fresh.append(m)
+            else:
+                # Consolidacao inclui todo estado que ja foi revisitado. Mantemos a
+                # separacao DEVELOPING/MATURE apenas para diagnostico, usando a mesma
+                # definicao oficial de maturidade do projeto (LIMIAR_MADURO = 20).
+                bucket_consolidacao.append(m)
+                if visits < self.LIMIAR_MADURO:
+                    developing_count += 1
+                else:
+                    mature_count += 1
+
             if abs(reward) >= 60.0:
                 bucket_high_reward.append(m)
 
-        single_visit_ratio = single_visit_count / len(memory_list)
+        # --------------------------------------------------------------
+        # PRESSAO INVERSA CONTINUA
+        # --------------------------------------------------------------
+        # A cauda longa nao e tratada como gatilho para perseguir ainda mais
+        # singletons. Ela e tratada como pressao para consolidar o que ja conseguiu
+        # reaparecer. Nao existe limiar binario nem media movel.
+        observado_total = max(1, len(memory_list))
+        fresh_ratio = fresh_count / observado_total
+        developing_ratio = developing_count / observado_total
+        mature_ratio = mature_count / observado_total
 
-        # ==============================================================
-        # PROPOSTA B: O LIMIAR E RELATIVO AO PROPRIO TREINO
-        # ==============================================================
-        # Ver a nota extensa no construtor. Em resumo: o limiar absoluto de 0,30 foi
-        # calibrado com ~500 mil estados e, com 1,7 milhoes, o ratio fica quase
-        # sempre acima dele — o modo de CONSOLIDAR nunca corria.
-        #
-        # Compara-se agora o ratio com a MEDIA MOVEL dos ultimos 50 valores. Enquanto
-        # nao houver amostras que cheguem, usa-se o limiar absoluto, que preserva o
-        # arranque do treino (onde o 0,30 estava bem calibrado).
-        #
-        # O registo e feito DEPOIS da comparacao, para o valor actual nao contaminar
-        # a media contra a qual esta a ser comparado.
-        if len(self.single_visit_ratio_hist) >= self.single_visit_ratio_min_amostras:
-            media = sum(self.single_visit_ratio_hist) / len(self.single_visit_ratio_hist)
-            priorizar_frescos = single_visit_ratio > media
-        else:
-            priorizar_frescos = single_visit_ratio > self.single_visit_ratio_limiar_absoluto
-        self.single_visit_ratio_hist.append(single_visit_ratio)
+        quota_high = 0.20
+        quota_fresh = 0.80 * (1.0 - fresh_ratio)
+        quota_fresh = min(0.60, max(0.20, quota_fresh))
+        quota_consolidacao = 0.80 - quota_fresh
 
-        # Se a novidade esta a ACELERAR, persegue-a; se esta a ABRANDAR, consolida.
-        if priorizar_frescos:
-            target_1v = int(target_normal * 0.70)
-            target_2to4 = int(target_normal * 0.20)
-        else:
-            target_1v = int(target_normal * 0.20)
-            target_2to4 = int(target_normal * 0.60)
-        target_high = target_normal - target_1v - target_2to4
+        target_fresh = int(target_normal * quota_fresh)
+        target_high = int(target_normal * quota_high)
+        # Usa o resto para evitar perdas de arredondamento: as tres metas somam
+        # exatamente target_normal.
+        target_consolidacao = target_normal - target_fresh - target_high
 
         def td_error(m):
             """|δ| = |r + γ·max Q(s') − Q(s,a)| — a 'surpresa' da transição.
@@ -1135,14 +1179,39 @@ class BlueBrain:
             idxs = np.random.choice(len(bucket), size=k, replace=False, p=probs)
             return [bucket[i] for i in idxs]
 
-        batch = []
-        batch.extend(sample_bucket(bucket_1_visit, target_1v))
-        batch.extend(sample_bucket(bucket_2_to_4, target_2to4))
-        batch.extend(sample_bucket(bucket_high_reward, target_high))
+        batch_normal = []
+        batch_normal.extend(sample_bucket(bucket_fresh, target_fresh))
+        batch_normal.extend(sample_bucket(bucket_consolidacao, target_consolidacao))
+        batch_normal.extend(sample_bucket(bucket_high_reward, target_high))
 
-        missing = target_normal - len(batch)
+        missing = target_normal - len(batch_normal)
         if missing > 0:
-            batch.extend(random.sample(memory_list, min(missing, len(memory_list))))
+            batch_normal.extend(random.sample(memory_list, min(missing, len(memory_list))))
+
+        # Diagnostico da composicao EFETIVA do lote normal. High-reward e fallback
+        # podem pertencer a qualquer faixa de visitas; por isso classificamos o lote
+        # final novamente em vez de inferir a composicao apenas pelas metas.
+        efetivo_fresh = 0
+        efetivo_consolidacao = 0
+        for state, _action_str, _reward, _next_state in batch_normal:
+            abs_state = self._get_abstract_state(state)
+            if self.visit_counts.get(abs_state, 0) <= 1:
+                efetivo_fresh += 1
+            else:
+                efetivo_consolidacao += 1
+
+        efetivo_total = max(1, len(batch_normal))
+        stats = self.replay_adaptive_stats
+        stats["calls"] += 1
+        stats["sum_observed_fresh_ratio"] += fresh_ratio
+        stats["sum_observed_developing_ratio"] += developing_ratio
+        stats["sum_observed_mature_ratio"] += mature_ratio
+        stats["sum_requested_fresh_quota"] += quota_fresh
+        stats["sum_requested_consolidation_quota"] += quota_consolidacao
+        stats["sum_effective_fresh_ratio"] += efetivo_fresh / efetivo_total
+        stats["sum_effective_consolidation_ratio"] += efetivo_consolidacao / efetivo_total
+
+        batch = list(batch_normal)
 
         # Funde a memória normal com a elite e embaralha (evita viés de ordem).
         batch.extend(elite_sample)
@@ -1388,6 +1457,9 @@ class BlueBrain:
             # elite recomecava do zero e as primeiras 100 batalhas voltavam a usar
             # so o piso absoluto, poluindo a memoria com episodios medianos.
             "recompensas_recentes": self.recompensas_recentes,
+            # Diagnostico do replay adaptativo por pressao inversa. Persistir estes
+            # acumuladores e essencial porque cada sessao de 10k roda noutro processo.
+            "replay_adaptive_stats": self.replay_adaptive_stats,
         }
         # Persistencia atomica. O codigo antigo engolia qualquer Exception e o
         # chamador podia acreditar que um checkpoint existia quando a gravacao tinha
@@ -1455,6 +1527,21 @@ class BlueBrain:
                 self.elite_memory = deque(_elite, maxlen=self.elite_maxlen)
                 _rec = data.get("recompensas_recentes", [])
                 self.recompensas_recentes = deque(_rec, maxlen=1000)
+
+                # Compatibilidade: brains anteriores a 26/09/2026 nao possuem estes
+                # acumuladores. Nesse caso os contadores comecam em zero sem tentar
+                # reconstruir uma composicao de replay que nunca foi registrada.
+                _stats = data.get("replay_adaptive_stats")
+                if isinstance(_stats, dict):
+                    for _k in self.replay_adaptive_stats:
+                        try:
+                            self.replay_adaptive_stats[_k] = float(_stats.get(_k, 0.0))
+                        except (TypeError, ValueError):
+                            self.replay_adaptive_stats[_k] = 0.0
+                    self.replay_adaptive_stats["calls"] = int(
+                        self.replay_adaptive_stats.get("calls", 0)
+                    )
+
                 # `memory` nao e guardada no .pkl (e volatil por desenho), logo o
                 # `memory_maxlen` novo aplica-se sozinho a partir do proximo bloco.
                 print(f"[CÉREBRO] Carregado. Estados: {len(self.q_table)} | "

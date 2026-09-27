@@ -1,0 +1,9 @@
+Ciclo: B_11
+Agente: Blue
+Batalhas: 50000
+Estados_Q: 559994
+Maior_abs_Q: 628.5511167705689
+Saude: saudavel
+Data: 2026-09-26T15:36:40
+Brain_ativo: C:\Projetos Robotica Computacional\Projeto Showdown IA Pokemon\Bot-QV-Pokemon\artefatos\brains\blue_brain.pkl
+CSV_ativo: C:\Projetos Robotica Computacional\Projeto Showdown IA Pokemon\Bot-QV-Pokemon\artefatos\logs\blue_treino_consolidado.csv

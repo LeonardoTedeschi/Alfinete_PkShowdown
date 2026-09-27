@@ -1,0 +1,2 @@
+Data,Ciclo,Tentativa,Etiqueta,Regua,Regua_Versao,Formato,AI_Profile,Semente,Agente,Batalhas_Por_Condicao,WR_Treino,WR_Holdout,Delta_Treino_Menos_Holdout_pp,EP_Diferenca_pp,Margem_Treino,Margem_Holdout,Duracao_Treino,Duracao_Holdout,Ties_Treino,Ties_Holdout,Estados_Novos_Treino,Estados_Novos_Holdout,Tempo_Treino_s,Tempo_Holdout_s
+20260926_111526,B11,1,pré-B11 - Hall da fama reduzido,CynthiaPlatinumBot,1.0,gen9nationaldex,AI_FLAG_BASIC|AI_FLAG_EVAL_ATTACK|AI_FLAG_EXPERT,42,BLUE,10000,19.83,16.01,+3.82,0.54,-0.85,-1.00,30.5,33.2,1,0,66081,61248,2226.4,2476.3
