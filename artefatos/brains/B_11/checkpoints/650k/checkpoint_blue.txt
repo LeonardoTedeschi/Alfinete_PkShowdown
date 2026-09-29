@@ -1,10 +1,10 @@
 Ciclo: B_11
 Etiqueta: (sem etiqueta)
 Agente: Blue
-Batalhas: 50000
-Estados_Q: 560465
-Maior_abs_Q: 596.7384259158472
+Batalhas: 650000
+Estados_Q: 2390221
+Maior_abs_Q: 900.5971166332661
 Saude: saudavel
-Data: 2026-09-28T17:54:10
+Data: 2026-09-28T10:51:04
 Brain_ativo: C:\Projetos Robotica Computacional\Projeto Showdown IA Pokemon\Bot-QV-Pokemon\artefatos\brains\blue_brain.pkl
 CSV_ativo: C:\Projetos Robotica Computacional\Projeto Showdown IA Pokemon\Bot-QV-Pokemon\artefatos\logs\blue_treino_consolidado.csv

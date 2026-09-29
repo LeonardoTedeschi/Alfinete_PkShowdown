@@ -1,10 +1,10 @@
 Ciclo: B_11
 Etiqueta: (sem etiqueta)
 Agente: Green
-Batalhas: 50000
-Estados_Q: 579612
-Maior_abs_Q: 672.2753034345075
+Batalhas: 100000
+Estados_Q: 920938
+Maior_abs_Q: 717.3629190044242
 Saude: saudavel
-Data: 2026-09-28T18:59:48
+Data: 2026-09-28T13:26:51
 Brain_ativo: C:\Projetos Robotica Computacional\Projeto Showdown IA Pokemon\Bot-QV-Pokemon\artefatos\brains\green_brain.pkl
 CSV_ativo: C:\Projetos Robotica Computacional\Projeto Showdown IA Pokemon\Bot-QV-Pokemon\artefatos\logs\green_treino_consolidado.csv

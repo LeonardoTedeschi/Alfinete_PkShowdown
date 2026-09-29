@@ -7,7 +7,8 @@ Blue/Green usam o pipeline novo:
   - depois da incorporacao, o CSV de emergencia e removido;
   - o processo fecha entre sessoes, libertando a RAM;
   - a cada 50k acumulados gera dois graficos (cumulativo + ultimos 10k),
-    fotografias do brain/N(s,a) e checkpoint recuperavel, organizados por ciclo.
+    fotografias do brain/N(s,a) e checkpoint recuperavel, organizados por ciclo
+    e, opcionalmente, por etiqueta experimental.
 
 Os scripts individuais cuidam da persistencia do brain:
   - emergencia em 5k;
@@ -20,7 +21,7 @@ USO (da raiz do projeto):
     python -m scripts.treino_continuo
     python -m scripts.treino_continuo --blue 5
     python -m scripts.treino_continuo --blue 5 --green 5
-    python -m scripts.treino_continuo --blue 1 --green 1 --batalhas 650000 --ciclo B11 --reset
+    python -m scripts.treino_continuo --blue 1 --green 1 --batalhas 650000 --ciclo B11 --etiqueta "baseline" --reset
 """
 
 import argparse
@@ -78,24 +79,54 @@ def normalizar_ciclo(ciclo):
     return valor or None
 
 
-def caminho_analise_marco(ciclo, agente, total_batalhas):
-    """Pasta dos artefatos de analise de um agente num marco do ciclo.
+def normalizar_etiqueta(etiqueta):
+    """Normaliza uma etiqueta humana para uso seguro em nomes de pasta.
 
-    Ex.: artefatos/logs/analise/B_11/Blue/050k
+    A etiqueta e opcional e serve apenas para identificar a corrida/hipotese.
+    Ela nao e enviada aos agentes e nao altera qualquer hiperparametro.
+    """
+    if etiqueta is None:
+        return None
+    bruto = str(etiqueta).strip()
+    if not bruto:
+        return None
+    valor = re.sub(r"[^A-Za-z0-9._-]+", "-", bruto).strip("-_.")
+    return valor or None
+
+
+def caminho_analise_marco(ciclo, agente, total_batalhas, etiqueta=None):
+    """Pasta dos artefatos de analise de um agente num marco de 50k.
+
+    Sem etiqueta, preserva a estrutura historica:
+        artefatos/logs/analise/B_11/Blue/050k
+
+    Com etiqueta, isola corridas experimentais sem sobrescrever artefatos:
+        artefatos/logs/analise/B_11/replay-fixo/Blue/050k
     """
     ciclo = normalizar_ciclo(ciclo)
     if not ciclo:
         return None
+    partes = [ANALISE_DIR, ciclo]
+    etiqueta_slug = normalizar_etiqueta(etiqueta)
+    if etiqueta_slug:
+        partes.append(etiqueta_slug)
     k = total_batalhas // 1000
-    return os.path.join(ANALISE_DIR, ciclo, agente.capitalize(), f"{k:03d}k")
+    partes.extend([agente.capitalize(), f"{k:03d}k"])
+    return os.path.join(*partes)
 
 
-def caminho_checkpoint_dir(ciclo, total_batalhas):
+def caminho_checkpoint_dir(ciclo, total_batalhas, etiqueta=None):
     ciclo = normalizar_ciclo(ciclo)
     if not ciclo:
         return None
+    partes = [BRAINS_DIR, ciclo]
+    etiqueta_slug = normalizar_etiqueta(etiqueta)
+    if etiqueta_slug:
+        partes.append(etiqueta_slug)
+    partes.append("checkpoints")
     k = total_batalhas // 1000
-    return os.path.join(BRAINS_DIR, ciclo, "checkpoints", f"{k:03d}k")
+    partes.append(f"{k:03d}k")
+    return os.path.join(*partes)
 
 
 def _total_consolidado(agente):
@@ -108,7 +139,7 @@ def _total_consolidado(agente):
         return 0
 
 
-def criar_checkpoint(agente, ciclo, consolidado, total_batalhas, estados, rel_saude):
+def criar_checkpoint(agente, ciclo, consolidado, total_batalhas, estados, rel_saude, etiqueta=None):
     """Preserva automaticamente brain + CSV a cada marco de 50k.
 
     Nao pausa o treinamento. O checkpoint e uma fotografia recuperavel do ciclo e
@@ -116,7 +147,7 @@ def criar_checkpoint(agente, ciclo, consolidado, total_batalhas, estados, rel_sa
     """
     if total_batalhas <= 0 or total_batalhas % CHECKPOINT_CADA_BATALHAS != 0:
         return None
-    pasta = caminho_checkpoint_dir(ciclo, total_batalhas)
+    pasta = caminho_checkpoint_dir(ciclo, total_batalhas, etiqueta)
     if not pasta:
         return None
     os.makedirs(pasta, exist_ok=True)
@@ -137,6 +168,7 @@ def criar_checkpoint(agente, ciclo, consolidado, total_batalhas, estados, rel_sa
 
     with open(meta_dst + ".tmp", "w", encoding="utf-8") as f:
         f.write(f"Ciclo: {normalizar_ciclo(ciclo)}\n")
+        f.write(f"Etiqueta: {str(etiqueta).strip() if etiqueta else '(sem etiqueta)'}\n")
         f.write(f"Agente: {agente.capitalize()}\n")
         f.write(f"Batalhas: {total_batalhas}\n")
         f.write(f"Estados_Q: {estados}\n")
@@ -427,63 +459,89 @@ def _csv_ultimos_blocos(caminho_origem, caminho_temp, n_blocos=10):
         w.writerows(janela)
 
 
-def gerar_artefatos_marco(agente, consolidado, total_batalhas, estados, ciclo):
-    """Gera automaticamente os artefatos de cada marco de 50k.
+def gerar_artefatos_marco(agente, consolidado, total_batalhas, estados, ciclo, etiqueta=None):
+    """Gera artefatos permanentes somente nos marcos de 50k.
 
-    Em cada marco ficam juntos:
-      - grafico cumulativo desde o inicio do ciclo;
-      - grafico apenas dos ultimos 10k, compativel com a visualizacao historica;
+    Os processos individuais de 10k continuam produzindo apenas o CSV temporario
+    necessario para consolidacao e o brain. O orquestrador concentra a
+    instrumentacao permanente em 50k, 100k, 150k...
+
+    Em cada marco sao gerados:
+      - grafico cumulativo desde o inicio da corrida;
+      - grafico dos ultimos 10k, para comparacao com as series historicas;
       - dashboard de analise do brain;
       - CSV + dashboard N(s,a) das escolhas de acao.
-
-    Nada aqui pausa o treino.
     """
     if total_batalhas <= 0 or total_batalhas % ANALISE_CADA_BATALHAS != 0:
-        return
-
-    pasta = caminho_analise_marco(ciclo, agente, total_batalhas)
-    if not pasta:
-        print("[ORQUESTRADOR] AVISO: ciclo ausente; artefatos de marco nao gerados.")
-        return
-    os.makedirs(pasta, exist_ok=True)
+        return None
 
     k = total_batalhas // 1000
     nome = agente.capitalize()
+    etiqueta_txt = str(etiqueta).strip() if etiqueta else None
+    nome_grafico = f"{nome} [{etiqueta_txt}]" if etiqueta_txt else nome
+
+    print("\n" + "=" * 72)
+    print(f"[MARCO {k:03d}k] iniciando artefatos de {nome}" +
+          (f" | etiqueta: {etiqueta_txt}" if etiqueta_txt else ""))
+
+    pasta = caminho_analise_marco(ciclo, agente, total_batalhas, etiqueta)
+    if not pasta:
+        print(f"[MARCO {k:03d}k] ERRO: ciclo ausente; artefatos nao gerados.")
+        print("=" * 72)
+        return None
+
+    try:
+        os.makedirs(pasta, exist_ok=True)
+    except Exception as e:
+        print(f"[MARCO {k:03d}k] ERRO AO CRIAR PASTA: {pasta} | {e}")
+        print("=" * 72)
+        return None
+
+    print(f"[MARCO {k:03d}k] pasta: {pasta}")
+
     ultima = _ultima_metrica(consolidado) or {}
     try:
         wr = float(ultima.get("WinRate_Bloco", 0.0))
     except (TypeError, ValueError):
         wr = 0.0
 
-    # 1) Grafico cumulativo: 0 -> marco atual.
+    falhas = []
+
+    # 1) Curva acumulada: 0 -> marco atual.
     graf_acumulado = os.path.join(pasta, f"{agente}_treino_{k:03d}k_acumulado.png")
     try:
         generate_graph(
             consolidado, graf_acumulado,
-            agent=nome, opponent="Instinto",
+            agent=nome_grafico, opponent="Instinto",
             total_battles=total_batalhas,
             final_win_rate=wr,
             final_states=estados,
         )
-        print(f"[ORQUESTRADOR] Grafico cumulativo {k}k: {graf_acumulado}")
+        if not os.path.exists(graf_acumulado) or os.path.getsize(graf_acumulado) == 0:
+            raise RuntimeError("generate_graph terminou sem produzir PNG valido")
+        print(f"[MARCO {k:03d}k] grafico acumulado OK: {graf_acumulado}")
     except Exception as e:
-        print(f"[ORQUESTRADOR] AVISO: grafico cumulativo {k}k falhou: {e}")
+        falhas.append(f"grafico acumulado: {e}")
+        print(f"[MARCO {k:03d}k] FALHA grafico acumulado: {e}")
 
-    # 2) Grafico da ultima sessao de 10k: visualizacao compativel com os ciclos antigos.
+    # 2) Ultimos 10k: mantido explicitamente para comparabilidade historica.
     graf_10k = os.path.join(pasta, f"{agente}_treino_{k:03d}k_ultimos_10k.png")
     csv_temp = os.path.join(pasta, f".{agente}_{k:03d}k_ultimos_10k.tmp.csv")
     try:
         _csv_ultimos_blocos(consolidado, csv_temp, n_blocos=10)
         generate_graph(
             csv_temp, graf_10k,
-            agent=nome, opponent="Instinto",
-            total_battles=total_batalhas,
+            agent=nome_grafico, opponent="Instinto",
+            total_battles=10_000,
             final_win_rate=wr,
             final_states=estados,
         )
-        print(f"[ORQUESTRADOR] Grafico ultimos 10k no marco {k}k: {graf_10k}")
+        if not os.path.exists(graf_10k) or os.path.getsize(graf_10k) == 0:
+            raise RuntimeError("generate_graph terminou sem produzir PNG valido")
+        print(f"[MARCO {k:03d}k] grafico ultimos 10k OK: {graf_10k}")
     except Exception as e:
-        print(f"[ORQUESTRADOR] AVISO: grafico dos ultimos 10k em {k}k falhou: {e}")
+        falhas.append(f"grafico ultimos 10k: {e}")
+        print(f"[MARCO {k:03d}k] FALHA grafico ultimos 10k: {e}")
     finally:
         try:
             if os.path.exists(csv_temp):
@@ -491,21 +549,39 @@ def gerar_artefatos_marco(agente, consolidado, total_batalhas, estados, ciclo):
         except OSError:
             pass
 
-    # 3) Analise do brain e 4) escolhas N(s,a), na MESMA pasta do marco.
+    # 3) Dashboard do brain e 4) analise N(s,a).
     brain = caminho_cerebro(agente)
-    etiqueta = f"{nome}_{k:03d}k"
-    try:
-        analyze_brain(brain, pasta, etiqueta)
-    except Exception as e:
-        print(f"[ORQUESTRADOR] AVISO: dashboard do brain {k}k falhou: {e}")
-    try:
-        resultado_acoes = analyze_action_choices(brain, pasta, etiqueta)
-        if resultado_acoes:
-            print(f"[ORQUESTRADOR] Acoes por estado {k}k: {resultado_acoes}")
-    except Exception as e:
-        print(f"[ORQUESTRADOR] AVISO: analise N(s,a) {k}k falhou: {e}")
+    etiqueta_arquivo = f"{nome}_{k:03d}k"
+    if normalizar_etiqueta(etiqueta):
+        etiqueta_arquivo += f"_{normalizar_etiqueta(etiqueta)}"
 
-    print(f"[ORQUESTRADOR] Artefatos do marco {k}k organizados em: {pasta}")
+    try:
+        analyze_brain(brain, pasta, etiqueta_arquivo)
+        print(f"[MARCO {k:03d}k] dashboard brain OK")
+    except Exception as e:
+        falhas.append(f"dashboard brain: {e}")
+        print(f"[MARCO {k:03d}k] FALHA dashboard brain: {e}")
+
+    try:
+        resultado_acoes = analyze_action_choices(brain, pasta, etiqueta_arquivo)
+        if isinstance(resultado_acoes, str) and resultado_acoes.startswith("SEM DADOS"):
+            falhas.append(f"N(s,a): {resultado_acoes}")
+            print(f"[MARCO {k:03d}k] AVISO N(s,a): {resultado_acoes}")
+        else:
+            print(f"[MARCO {k:03d}k] N(s,a) OK" +
+                  (f": {resultado_acoes}" if resultado_acoes else ""))
+    except Exception as e:
+        falhas.append(f"N(s,a): {e}")
+        print(f"[MARCO {k:03d}k] FALHA N(s,a): {e}")
+
+    if falhas:
+        print(f"[MARCO {k:03d}k] CONCLUIDO COM {len(falhas)} AVISO(S)/FALHA(S):")
+        for item in falhas:
+            print(f"    - {item}")
+    else:
+        print(f"[MARCO {k:03d}k] CONCLUIDO: todos os artefatos gerados.")
+    print("=" * 72)
+    return pasta
 
 
 # ---------------------------------------------------------------------------
@@ -565,7 +641,7 @@ def correr_uma_repeticao(agente, indice, total):
     return resultado.returncode
 
 
-def _executar_pipeline_novo(agente, repeticoes, reset, ciclo):
+def _executar_pipeline_novo(agente, repeticoes, reset, ciclo, etiqueta=None):
     if reset:
         limpar_estado_ativo(agente)
 
@@ -578,7 +654,8 @@ def _executar_pipeline_novo(agente, repeticoes, reset, ciclo):
     total_planejado = total_inicial + repeticoes * BATALHAS_POR_REPETICAO
     extensao_confirmada = total_inicial > ORCAMENTO_PRINCIPAL_BATALHAS
 
-    print(f"\n[ORQUESTRADOR] === {agente.upper()}: {repeticoes} repeticao(oes) de 10k | ciclo {ciclo} ===")
+    print(f"\n[ORQUESTRADOR] === {agente.upper()}: {repeticoes} repeticao(oes) de 10k | ciclo {ciclo}"
+          f" | etiqueta {str(etiqueta).strip() if etiqueta else '(sem etiqueta)'} ===")
     print(f"[ORQUESTRADOR] Total inicial: {total_inicial:,} | planejado: {total_planejado:,}")
 
     # Nao sobrescreve recuperacao pendente.
@@ -649,8 +726,18 @@ def _executar_pipeline_novo(agente, repeticoes, reset, ciclo):
               f"{estados_depois:,} (+{crescimento:,}) | maior |Q| {rel['maior_q']:,.0f}")
         print(f"               estabilidade: {msg_conv}{'  [ESTAVEL]' if estavel else ''}")
 
-        gerar_artefatos_marco(agente, consolidado, total_cumulativo, estados_depois, ciclo)
-        criar_checkpoint(agente, ciclo, consolidado, total_cumulativo, estados_depois, rel)
+        # O proprio total acumulado e a fonte de verdade do marco. Cada processo
+        # tem 10k, logo 50k corresponde a cinco execucoes completas.
+        if total_cumulativo % ANALISE_CADA_BATALHAS == 0:
+            gerar_artefatos_marco(
+                agente, consolidado, total_cumulativo, estados_depois, ciclo, etiqueta
+            )
+            criar_checkpoint(
+                agente, ciclo, consolidado, total_cumulativo, estados_depois, rel, etiqueta
+            )
+        else:
+            faltam = ANALISE_CADA_BATALHAS - (total_cumulativo % ANALISE_CADA_BATALHAS)
+            print(f"[ORQUESTRADOR] Proximo marco de analise em {faltam:,} batalhas.")
         total_atual = total_cumulativo
 
 
@@ -672,7 +759,7 @@ def _executar_pipeline_legado(agente, repeticoes, reset):
         consolidar_legado(agente, arquivos)
 
 
-def executar_plano(plano, reset, ciclo=None):
+def executar_plano(plano, reset, ciclo=None, etiqueta=None):
     os.makedirs(BRAINS_DIR, exist_ok=True)
     os.makedirs(LOGS_DIR, exist_ok=True)
     os.makedirs(ANALISE_DIR, exist_ok=True)
@@ -680,7 +767,7 @@ def executar_plano(plano, reset, ciclo=None):
         if repeticoes <= 0:
             continue
         if agente in PIPELINE_NOVO:
-            _executar_pipeline_novo(agente, repeticoes, reset, ciclo)
+            _executar_pipeline_novo(agente, repeticoes, reset, ciclo, etiqueta)
         else:
             _executar_pipeline_legado(agente, repeticoes, reset)
     print("\n[ORQUESTRADOR] Plano de treino concluido.")
@@ -705,6 +792,7 @@ def modo_interativo():
     reset = input("Apagar estado ATIVO antes (comecar do zero)? [s/N]: ").strip().lower() in (
         "s", "sim", "y", "yes")
     ciclo = input("Ciclo experimental (ex.: B11): ").strip() or None
+    etiqueta = input("Etiqueta da corrida (opcional; ex.: replay-fixo): ").strip() or None
 
     if sum(r for _, r in plano) == 0:
         print("Nada a treinar. A sair.")
@@ -712,7 +800,7 @@ def modo_interativo():
     print("\nPlano: " + ", ".join(f"{a}={r}" for a, r in plano if r > 0) +
           f" | reset={'sim' if reset else 'nao'}")
     if input("Confirmar e iniciar? [S/n]: ").strip().lower() in ("", "s", "sim", "y", "yes"):
-        executar_plano(plano, reset, ciclo)
+        executar_plano(plano, reset, ciclo, etiqueta)
     else:
         print("Cancelado.")
 
@@ -728,6 +816,8 @@ if __name__ == "__main__":
                     help="apaga brain/consolidado/emergencias ATIVOS antes de treinar")
     ap.add_argument("--ciclo", type=str, default=None,
                     help="versao do Blue que identifica o ciclo experimental, ex.: B11")
+    ap.add_argument("--etiqueta", type=str, default=None,
+                    help="rotulo opcional da corrida/hipotese; organiza artefatos e aparece nos graficos")
     args = ap.parse_args()
 
     if args.batalhas is not None:
@@ -742,7 +832,7 @@ if __name__ == "__main__":
         if efetivo != args.batalhas:
             print(f"               (ajustado de {args.batalhas:,} para {efetivo:,})")
         print(f"[ORQUESTRADOR] Agentes: {', '.join(agentes)}")
-        executar_plano([(a, reps) for a in agentes], args.reset, args.ciclo)
+        executar_plano([(a, reps) for a in agentes], args.reset, args.ciclo, args.etiqueta)
     elif args.blue is None and args.green is None and args.ash is None:
         modo_interativo()
     else:
@@ -750,4 +840,4 @@ if __name__ == "__main__":
             ("blue", args.blue or 0),
             ("green", args.green or 0),
             ("ash", args.ash or 0),
-        ], args.reset, args.ciclo)
+        ], args.reset, args.ciclo, args.etiqueta)

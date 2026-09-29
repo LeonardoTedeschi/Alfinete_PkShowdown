@@ -266,38 +266,48 @@ class BlueBrain:
         self.elite_reward_minimo = 100.0 # piso absoluto, herdado do critério antigo
 
         # ==================================================================
-        # REPLAY ADAPTATIVO POR PRESSAO INVERSA (26/09/2026)
+        # REPLAY ESTRATIFICADO FIXO (27/09/2026)
         # ==================================================================
-        # A Q-table do ALFINETE tem distribuicao de cauda longa: muitos estados sao
-        # vistos uma unica vez e uma minoria concentra revisitas. O mecanismo anterior
-        # comparava a fraccao de estados de 1 visita com uma media movel e alternava
-        # abruptamente entre PRIORIZAR FRESCOS e CONSOLIDAR. Essa comparacao nao mede
-        # uma derivada real e pode oscilar apenas por ruido amostral. Alem disso, a
-        # historia usada pela decisao nao era persistida entre processos de 10k.
+        # A Q-table do ALFINETE tem distribuicao de cauda longa. Depois de testar uma
+        # alternancia binaria e um controlador adaptativo baseado na fraccao de
+        # singletons, abandonamos a ideia de deixar a propria cauda decidir a quota do
+        # replay: singletons sao uma propriedade estrutural deste espaco e nao um sinal
+        # suficiente de qualidade da aprendizagem.
         #
-        # O novo replay nao usa modos binarios. A amostra atual e classificada por
-        # visitas reais (replay nao incrementa visit_counts):
-        #   FRESH       -> visitas <= 1
-        #   DEVELOPING  -> 2 <= visitas < LIMIAR_MADURO
-        #   MATURE      -> visitas >= LIMIAR_MADURO
+        # O replay passa a usar quatro estratos FIXOS, independentes da distribuicao
+        # observada em cada chamada:
+        #   FRESH       -> visitas <= 1                  : 20%
+        #   DEVELOPING  -> 2 <= visitas < LIMIAR_MADURO : 50%
+        #   MATURE      -> visitas >= LIMIAR_MADURO     : 10%
+        #   HIGH_IMPACT -> |reward| >= 60                : 20%
         #
-        # A fraccao FRESH observada gera FEEDBACK INVERSO: quanto mais a memoria esta
-        # dominada por estados frescos, maior a quota de consolidacao de estados ja
-        # revisitados. Dos exemplos normais do replay, 20% ficam reservados a
-        # transicoes de alto impacto; os outros 80% sao divididos de forma continua,
-        # com limites de 20% a 60% para impedir que frescura ou consolidacao desapareca.
-        #
-        # Estes acumuladores sao apenas diagnosticos. Sao persistidos no .pkl para
-        # permitir auditar a composicao real ao longo das sessoes independentes de 10k.
-        self.replay_adaptive_stats = {
+        # A prioridade maior em DEVELOPING expressa a hipotese a testar: o replay deve
+        # gastar a maior parte da capacidade nos estados que ja reapareceram, mas ainda
+        # nao atingiram a maturidade usada pelo proprio projeto (LIMIAR_MADURO = 20).
+        # PER/TD-error continua escolhendo dentro de cada estrato. HIGH_IMPACT e
+        # reservado primeiro e as transicoes escolhidas sao removidas dos outros
+        # estratos naquela chamada, evitando que a mesma transicao ocupe duas vagas no
+        # mesmo batch. Se algum estrato nao tiver material suficiente, o restante e
+        # preenchido sem duplicacao a partir da amostra de memoria.
+        self.replay_fixed_quotas = {
+            "fresh": 0.20,
+            "developing": 0.50,
+            "mature": 0.10,
+            "high_impact": 0.20,
+        }
+        self.replay_fixed_stats = {
             "calls": 0,
             "sum_observed_fresh_ratio": 0.0,
             "sum_observed_developing_ratio": 0.0,
             "sum_observed_mature_ratio": 0.0,
-            "sum_requested_fresh_quota": 0.0,
-            "sum_requested_consolidation_quota": 0.0,
-            "sum_effective_fresh_ratio": 0.0,
-            "sum_effective_consolidation_ratio": 0.0,
+            "sum_effective_source_fresh_ratio": 0.0,
+            "sum_effective_source_developing_ratio": 0.0,
+            "sum_effective_source_mature_ratio": 0.0,
+            "sum_effective_source_high_impact_ratio": 0.0,
+            "sum_effective_source_fallback_ratio": 0.0,
+            "sum_final_visit_fresh_ratio": 0.0,
+            "sum_final_visit_developing_ratio": 0.0,
+            "sum_final_visit_mature_ratio": 0.0,
         }
 
         # Ações: base + variante _MEC (mecânica) para as não-switch
@@ -1096,7 +1106,8 @@ class BlueBrain:
         memory_list = random.sample(list(self.memory), sample_size)
 
         bucket_fresh = []
-        bucket_consolidacao = []
+        bucket_developing = []
+        bucket_mature = []
         bucket_high_reward = []
         fresh_count = 0
         developing_count = 0
@@ -1110,40 +1121,34 @@ class BlueBrain:
             if visits <= 1:
                 fresh_count += 1
                 bucket_fresh.append(m)
+            elif visits < self.LIMIAR_MADURO:
+                developing_count += 1
+                bucket_developing.append(m)
             else:
-                # Consolidacao inclui todo estado que ja foi revisitado. Mantemos a
-                # separacao DEVELOPING/MATURE apenas para diagnostico, usando a mesma
-                # definicao oficial de maturidade do projeto (LIMIAR_MADURO = 20).
-                bucket_consolidacao.append(m)
-                if visits < self.LIMIAR_MADURO:
-                    developing_count += 1
-                else:
-                    mature_count += 1
+                mature_count += 1
+                bucket_mature.append(m)
 
             if abs(reward) >= 60.0:
                 bucket_high_reward.append(m)
 
-        # --------------------------------------------------------------
-        # PRESSAO INVERSA CONTINUA
-        # --------------------------------------------------------------
-        # A cauda longa nao e tratada como gatilho para perseguir ainda mais
-        # singletons. Ela e tratada como pressao para consolidar o que ja conseguiu
-        # reaparecer. Nao existe limiar binario nem media movel.
         observado_total = max(1, len(memory_list))
         fresh_ratio = fresh_count / observado_total
         developing_ratio = developing_count / observado_total
         mature_ratio = mature_count / observado_total
 
-        quota_high = 0.20
-        quota_fresh = 0.80 * (1.0 - fresh_ratio)
-        quota_fresh = min(0.60, max(0.20, quota_fresh))
-        quota_consolidacao = 0.80 - quota_fresh
-
-        target_fresh = int(target_normal * quota_fresh)
-        target_high = int(target_normal * quota_high)
-        # Usa o resto para evitar perdas de arredondamento: as tres metas somam
-        # exatamente target_normal.
-        target_consolidacao = target_normal - target_fresh - target_high
+        # --------------------------------------------------------------
+        # ESTRATIFICACAO FIXA
+        # --------------------------------------------------------------
+        # As quotas nao dependem da proporcao observada na memoria. Isso elimina o
+        # controlador que mudava a distribuicao do replay ao longo do treino e torna
+        # o mecanismo diretamente explicavel/reprodutivel.
+        q = self.replay_fixed_quotas
+        target_fresh = int(target_normal * q["fresh"])
+        target_developing = int(target_normal * q["developing"])
+        target_mature = int(target_normal * q["mature"])
+        # O resto vai para HIGH_IMPACT para que a soma seja exatamente target_normal,
+        # absorvendo apenas o erro inteiro de arredondamento.
+        target_high = target_normal - target_fresh - target_developing - target_mature
 
         def td_error(m):
             """|δ| = |r + γ·max Q(s') − Q(s,a)| — a 'surpresa' da transição.
@@ -1166,12 +1171,11 @@ class BlueBrain:
         def sample_bucket(bucket, target_size):
             """Amostra do bucket priorizando por TD-error (PER). Mantém estocástico
             (todos têm probabilidade > 0) para não colapsar a diversidade."""
-            if not bucket:
+            if not bucket or target_size <= 0:
                 return []
             k = min(target_size, len(bucket))
             if self.td_priority_alpha <= 0.0 or k >= len(bucket):
                 return random.sample(bucket, k)
-            # prioridade p_i = (|δ_i| + ε)^α ; probabilidade ∝ p_i
             eps = 0.01
             errors = np.array([td_error(m) for m in bucket], dtype=float)
             prios = np.power(errors + eps, self.td_priority_alpha)
@@ -1179,37 +1183,71 @@ class BlueBrain:
             idxs = np.random.choice(len(bucket), size=k, replace=False, p=probs)
             return [bucket[i] for i in idxs]
 
+        # HIGH_IMPACT e reservado primeiro. Como ele se sobrepoe semanticamente as
+        # classes de visitas, retiramos as transicoes escolhidas dos demais buckets
+        # nesta chamada para impedir duplicacao dentro do batch.
+        high_sample = sample_bucket(bucket_high_reward, target_high)
+        selected_ids = {id(m) for m in high_sample}
+
+        def sem_selecionados(bucket):
+            return [m for m in bucket if id(m) not in selected_ids]
+
+        fresh_sample = sample_bucket(sem_selecionados(bucket_fresh), target_fresh)
+        selected_ids.update(id(m) for m in fresh_sample)
+
+        developing_sample = sample_bucket(
+            sem_selecionados(bucket_developing), target_developing
+        )
+        selected_ids.update(id(m) for m in developing_sample)
+
+        mature_sample = sample_bucket(sem_selecionados(bucket_mature), target_mature)
+        selected_ids.update(id(m) for m in mature_sample)
+
         batch_normal = []
-        batch_normal.extend(sample_bucket(bucket_fresh, target_fresh))
-        batch_normal.extend(sample_bucket(bucket_consolidacao, target_consolidacao))
-        batch_normal.extend(sample_bucket(bucket_high_reward, target_high))
+        batch_normal.extend(fresh_sample)
+        batch_normal.extend(developing_sample)
+        batch_normal.extend(mature_sample)
+        batch_normal.extend(high_sample)
 
+        # Se um estrato nao tiver material suficiente, completa com transicoes ainda
+        # nao escolhidas da mesma amostra de memoria. O fallback nao duplica entradas.
         missing = target_normal - len(batch_normal)
+        fallback_sample = []
         if missing > 0:
-            batch_normal.extend(random.sample(memory_list, min(missing, len(memory_list))))
+            fallback_pool = [m for m in memory_list if id(m) not in selected_ids]
+            fallback_sample = random.sample(fallback_pool, min(missing, len(fallback_pool)))
+            batch_normal.extend(fallback_sample)
+            selected_ids.update(id(m) for m in fallback_sample)
 
-        # Diagnostico da composicao EFETIVA do lote normal. High-reward e fallback
-        # podem pertencer a qualquer faixa de visitas; por isso classificamos o lote
-        # final novamente em vez de inferir a composicao apenas pelas metas.
-        efetivo_fresh = 0
-        efetivo_consolidacao = 0
-        for state, _action_str, _reward, _next_state in batch_normal:
-            abs_state = self._get_abstract_state(state)
-            if self.visit_counts.get(abs_state, 0) <= 1:
-                efetivo_fresh += 1
-            else:
-                efetivo_consolidacao += 1
-
+        # Diagnostico persistente: separa a origem de amostragem (estrato solicitado)
+        # da classe final por numero de visitas. Assim conseguimos distinguir uma falta
+        # de material em um bucket de uma mudanca real da distribuicao da memoria.
         efetivo_total = max(1, len(batch_normal))
-        stats = self.replay_adaptive_stats
+        final_fresh = 0
+        final_developing = 0
+        final_mature = 0
+        for state, _action_str, _reward, _next_state in batch_normal:
+            visits = self.visit_counts.get(self._get_abstract_state(state), 0)
+            if visits <= 1:
+                final_fresh += 1
+            elif visits < self.LIMIAR_MADURO:
+                final_developing += 1
+            else:
+                final_mature += 1
+
+        stats = self.replay_fixed_stats
         stats["calls"] += 1
         stats["sum_observed_fresh_ratio"] += fresh_ratio
         stats["sum_observed_developing_ratio"] += developing_ratio
         stats["sum_observed_mature_ratio"] += mature_ratio
-        stats["sum_requested_fresh_quota"] += quota_fresh
-        stats["sum_requested_consolidation_quota"] += quota_consolidacao
-        stats["sum_effective_fresh_ratio"] += efetivo_fresh / efetivo_total
-        stats["sum_effective_consolidation_ratio"] += efetivo_consolidacao / efetivo_total
+        stats["sum_effective_source_fresh_ratio"] += len(fresh_sample) / efetivo_total
+        stats["sum_effective_source_developing_ratio"] += len(developing_sample) / efetivo_total
+        stats["sum_effective_source_mature_ratio"] += len(mature_sample) / efetivo_total
+        stats["sum_effective_source_high_impact_ratio"] += len(high_sample) / efetivo_total
+        stats["sum_effective_source_fallback_ratio"] += len(fallback_sample) / efetivo_total
+        stats["sum_final_visit_fresh_ratio"] += final_fresh / efetivo_total
+        stats["sum_final_visit_developing_ratio"] += final_developing / efetivo_total
+        stats["sum_final_visit_mature_ratio"] += final_mature / efetivo_total
 
         batch = list(batch_normal)
 
@@ -1457,9 +1495,9 @@ class BlueBrain:
             # elite recomecava do zero e as primeiras 100 batalhas voltavam a usar
             # so o piso absoluto, poluindo a memoria com episodios medianos.
             "recompensas_recentes": self.recompensas_recentes,
-            # Diagnostico do replay adaptativo por pressao inversa. Persistir estes
-            # acumuladores e essencial porque cada sessao de 10k roda noutro processo.
-            "replay_adaptive_stats": self.replay_adaptive_stats,
+            # Diagnostico do replay estratificado fixo. Persistir estes acumuladores
+            # permite auditar a composicao real entre processos independentes de 10k.
+            "replay_fixed_stats": self.replay_fixed_stats,
         }
         # Persistencia atomica. O codigo antigo engolia qualquer Exception e o
         # chamador podia acreditar que um checkpoint existia quando a gravacao tinha
@@ -1528,18 +1566,18 @@ class BlueBrain:
                 _rec = data.get("recompensas_recentes", [])
                 self.recompensas_recentes = deque(_rec, maxlen=1000)
 
-                # Compatibilidade: brains anteriores a 26/09/2026 nao possuem estes
-                # acumuladores. Nesse caso os contadores comecam em zero sem tentar
-                # reconstruir uma composicao de replay que nunca foi registrada.
-                _stats = data.get("replay_adaptive_stats")
+                # Compatibilidade: brains anteriores ao replay fixo nao possuem estes
+                # acumuladores. Nao misturamos estatisticas do controlador adaptativo
+                # anterior porque as chaves tinham semantica diferente.
+                _stats = data.get("replay_fixed_stats")
                 if isinstance(_stats, dict):
-                    for _k in self.replay_adaptive_stats:
+                    for _k in self.replay_fixed_stats:
                         try:
-                            self.replay_adaptive_stats[_k] = float(_stats.get(_k, 0.0))
+                            self.replay_fixed_stats[_k] = float(_stats.get(_k, 0.0))
                         except (TypeError, ValueError):
-                            self.replay_adaptive_stats[_k] = 0.0
-                    self.replay_adaptive_stats["calls"] = int(
-                        self.replay_adaptive_stats.get("calls", 0)
+                            self.replay_fixed_stats[_k] = 0.0
+                    self.replay_fixed_stats["calls"] = int(
+                        self.replay_fixed_stats.get("calls", 0)
                     )
 
                 # `memory` nao e guardada no .pkl (e volatil por desenho), logo o
