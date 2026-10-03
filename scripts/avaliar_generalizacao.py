@@ -98,6 +98,11 @@ from shared.env.cynthia_platinum import (
 from shared.env.maxdamage import MaxDamagePlayer
 from shared.env.teams_train import RandomTeamFromPool, TEAMS_LIST as TIMES_TREINO
 from shared.env.teams_eval import TEAMS_LIST as TIMES_HOLDOUT
+from shared.analysis.plot_generalizacao import (
+    DiagnosticoDecisoes,
+    salvar_diagnosticos,
+    gerar_grafico,
+)
 
 try:
     from qlearning.ash_agent import AshAgent
@@ -119,7 +124,7 @@ SERVIDOR = ServerConfiguration(
 )
 FORMATO = "gen9nationaldex"
 BATALHAS = 1_000  # por condicao
-CONCORRENCIA = 1  # mantido em 1 para reprodutibilidade da avaliacao
+CONCORRENCIA = 5  # mantido em 1 para reprodutibilidade da avaliacao
 SEMENTE_PADRAO = 42
 
 NIVEIS_LOG = {
@@ -229,12 +234,14 @@ def _instrumentar(jogador, etiqueta):
     original = jogador.choose_move
     jogador._eval_tempo_decisao = 0.0
     jogador._eval_n_decisoes = 0
+    jogador._eval_n_erros = 0
 
     def com_instrumentacao(battle):
         t0 = time.perf_counter()
         try:
             return original(battle)
         except Exception:
+            jogador._eval_n_erros += 1
             print()
             print("!" * 78)
             print(f"  EXCECAO em choose_move de {etiqueta}")
@@ -380,8 +387,8 @@ async def avaliar_condicao(
     diagnostico_cynthia=False,
 ):
     """Corre uma condicao contra Cynthia e devolve metricas uniformes."""
-    # RandomTeamFromPool usa numpy; alguns auxiliares usam random. Reiniciar ambos
-    # antes de cada condicao torna as baterias repetiveis com concorrencia 1.
+    # Controla os geradores locais. Concorrencia 1 reduz variacao de ordem,
+    # mas nao fixa a aleatoriedade do servidor Showdown.
     random.seed(semente)
     np.random.seed(semente)
 
@@ -393,9 +400,18 @@ async def avaliar_condicao(
         diagnostico_cynthia=diagnostico_cynthia,
     )
 
+    # 03/10/2026: referencia coletada ANTES das batalhas. O plot antigo recebia
+    # apenas WR e contagem de estados novos; nao podia reconstruir cobertura.
+    # Observadores chamam cada decisao/executor original exatamente uma vez.
+    diagnostico = DiagnosticoDecisoes(jogador)
     estados_antes = _numero_estados(jogador)
     t0 = time.perf_counter()
-    await jogador.battle_against(cynthia, n_battles=n_batalhas)
+    try:
+        await jogador.battle_against(cynthia, n_battles=n_batalhas)
+    finally:
+        diagnostico.chamadas_choose_move = jogador._eval_n_decisoes
+        diagnostico.erros_choose_move = jogador._eval_n_erros
+        diagnostico.fechar()
     tempo = time.perf_counter() - t0
     estados_depois = _numero_estados(jogador)
 
@@ -421,6 +437,7 @@ async def avaliar_condicao(
         "estados_antes": estados_antes,
         "estados_depois": estados_depois,
         "tempo": tempo,
+        "diagnostico": diagnostico,
     }
 
 
@@ -461,6 +478,9 @@ CABECALHO = [
     "Estados_Novos_Holdout",
     "Tempo_Treino_s",
     "Tempo_Holdout_s",
+    "Batalhas_Treino",
+    "Batalhas_Holdout",
+    "Diagnostico_Versao",
 ]
 
 
@@ -512,8 +532,12 @@ def registar(agente, treino, holdout, etiqueta, semente, ciclo):
             holdout["estados_depois"] - holdout["estados_antes"],
             f"{treino['tempo']:.1f}",
             f"{holdout['tempo']:.1f}",
+            treino["batalhas"],
+            holdout["batalhas"],
+            "1",
         ])
 
+    salvar_diagnosticos(caminho, treino, holdout)
     return caminho
 
 
@@ -610,6 +634,13 @@ async def executar(agente, n_batalhas, etiqueta, semente, ciclo, diagnostico_cyn
     caminho = registar(agente, treino, holdout, etiqueta, semente, ciclo)
     if caminho:
         print(f"  Resultado: {caminho}")
+        # Os CSVs ja estao salvos se a biblioteca grafica estiver indisponivel.
+        try:
+            grafico = gerar_grafico(caminho)
+            print(f"  Dashboard: {grafico}")
+        except Exception as exc:
+            print(f"  [AVISO] CSVs preservados; falha ao gerar graficos: {exc}")
+            print("  Regerar: python -m shared.analysis.plot_generalizacao")
 
     return treino, holdout
 

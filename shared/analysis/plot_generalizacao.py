@@ -1,337 +1,369 @@
-"""
-shared/analysis/plot_generalizacao.py — historico e grafico dos testes de holdout.
+"""Diagnosticos e graficos da avaliacao externa contra Cynthia.
 
-PORQUE EXISTE
--------------
-O `scripts/avaliar_generalizacao.py` imprime o resultado na consola e perde-o. Cada
-teste custa 10.000 batalhas (5.000 por condicao) e a serie entre versoes e o dado que
-mostra se as alteracoes ao pool e ao instinto estao a reduzir o overfitting.
+03/10/2026: substitui o leitor do historico legado contra InstinctBot.
+Nao aplica o antigo vies de 2,35 pp nem interpreta 50% como acaso.
+Writer: DiagnosticoDecisoes observa brain.decide_action e o retorno do executor.
+Passagem: avaliar_condicao -> registar -> salvar_diagnosticos.
+Reader: gerar_grafico le o CSV principal e seus CSVs acompanhantes.
 
-Mesmo padrao do `regua_historico.csv`: um CSV acumulativo com uma linha por teste, e
-um grafico gerado a partir dele.
-
-O QUE O GRAFICO MOSTRA
-----------------------
-Barras emparelhadas por agente (treino ao lado de holdout) com barras de erro de IC
-95%, e a QUEDA anotada por cima de cada par. A linha dos 50% marca o acaso.
-
-NOTA SOBRE A LEITURA DA QUEDA
------------------------------
-Na condicao de holdout o ADVERSARIO (InstinctBot) tambem joga com os times novos, logo
-qualquer diferenca de dificuldade entre os pools contamina a queda medida. Mede-se com
-o proprio InstinctBot: e a diferenca entre as duas ancoras (`medir_regua --pool eval`
-menos `--pool treino`).
-
-Historico dessa diferenca:
-
-    instinto v12   +3,06 pp    o pool de eval favorecia claramente o instinto
-    instinto v13   +1,50 pp
-    instinto v14   -0,65 pp    1,0 sigma: indistinguivel de ZERO
-    instinto v15   -0,35 pp    ancoras 74,37 treino / 74,02 eval
-    instinto v19   +2,42 pp    ancoras 77,38 / 79,80, 4,2 sigma
-    instinto v20   +1,70 pp    ancoras 78,82 / 80,52, 3,0 sigma
-    instinto v21   +1,72 pp    ancoras 78,45 / 80,17, 3,0 sigma
-    instinto v22   +2,35 pp    ancoras 78,91 / 81,26, 4,2 sigma  <-- EM USO (congelado)
-
-O paragrafo que aqui afirmava que os dois pools sao igualmente dificeis DEIXOU DE SER
-VERDADE a partir do v19. Com `VIES_POOL_PP = 0.0` a coluna corrigida sobrestimava a
-falha de generalizacao, em silencio e com o subtitulo do grafico a afirmar "pools
-equivalentes".
-
-AS QUATRO MEDICOES (v19 a v22) ANDAM ENTRE 1,70 e 2,42 pp E SAO COMPATIVEIS ENTRE SI: a
-maior diferenca entre duas delas fica dentro de ~1 sigma. **Nao se deve ler a oscilacao
-como efeito das correccoes.** O que se sabe e que o vies EXISTE, ronda os 2 pp, e o pool
-de eval (20 times contra 60) e intrinsecamente mais ruidoso.
-
-ATUALIZAR sempre que o instinto ou os pools mudarem: correr as duas ancoras e por aqui
-a diferenca.
-
-COMPATIBILIDADE COM CORRIDAS ANTIGAS (11/09/2026)
--------------------------------------------------
-O CSV acumula corridas feitas com VALORES DIFERENTES desta constante. Mudar a constante
-NAO deve reescrever o passado: cada linha foi corrigida com o vies vigente quando o
-instinto tinha aquela versao, e esse desconto era o CERTO nessa altura.
-
-Por isso:
-
-  1. Gravou-se a coluna `Vies_Pool_pp` a partir de 11/09/2026, com o valor usado nessa
-     linha.
-  2. Para as linhas ANTIGAS, que nao tem a coluna, o vies e RECUPERADO por subtraccao:
-     `Queda_pp - Queda_Corrigida_pp`. Nao se adivinha nada — as duas colunas sempre
-     estiveram la, e a diferenca entre elas E o vies aplicado.
-  3. O ficheiro e MIGRADO uma vez, na primeira gravacao apos esta versao: reescreve-se
-     com o cabecalho novo e preenche-se `Vies_Pool_pp` das linhas antigas pela regra 2.
-     Um `.bak` e deixado ao lado antes de tocar no original.
-  4. O subtitulo do grafico deixa de anunciar UM vies quando as barras desenhadas usam
-     valores diferentes: nesse caso diz o intervalo. Anunciar 2,35 num grafico que
-     contem barras descontadas a 2,42 seria mentir.
-
-USO
----
-Do `avaliar_generalizacao.py`, depois de `imprimir(...)`:
-
-    from shared.analysis.plot_generalizacao import registar, gerar_grafico
-    registar(agente, treino, holdout, etiqueta=args.etiqueta)
-    gerar_grafico()
-
-Ou avulso, para redesenhar o grafico a partir do CSV existente:
-
+Uso avulso (na raiz do projeto):
     python -m shared.analysis.plot_generalizacao
+    python -m shared.analysis.plot_generalizacao --csv CAMINHO_DO_CSV
+
+Todos os arquivos acompanham o CSV da tentativa em
+artefatos/logs/Generalizacao/<Agente>VsCynthia/<Ciclo>/.
+CSV antigo gera apenas desempenho; cobertura ausente nunca vira zero.
+Instrumentacao observacional: nao congela escritas internas do brain, nao altera
+decisoes e nao salva checkpoints. A referencia de visitas e a carga inicial.
 """
 
+import argparse
 import csv
-import os
-from datetime import datetime
+import math
+from collections import Counter
+from pathlib import Path
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-LOGS_DIR = os.path.join(ROOT, "artefatos", "logs")
-CSV_HISTORICO = os.path.join(LOGS_DIR, "generalizacao_historico.csv")
-PNG = os.path.join(LOGS_DIR, "generalizacao_historico.png")
-
-# Vantagem do pool de eval sobre o de treino, medida com o InstinctBot.
-#
-# ATUALIZADO 06/09/2026, INSTINTO v22 (CONGELADO para o ciclo v10/v7, ver 6.47 J).
-# +2,35 pp com erro padrao da diferenca de 0,57 pp, ou seja 4,2 sigma.
-#
-# LEITURA: na condicao de holdout o ADVERSARIO tambem joga com os times novos, logo
-# 2,35 pp da queda medida sao do MATERIAL e nao do agente.
-#
-# ESTE E O VALOR DO CICLO. A regua esta congelada e este numero NAO deve mudar ate ao
-# fim do v10/v7. Se a regua for descongelada, remedir as duas ancoras antes de lhe tocar.
-# As linhas JA GRAVADAS mantem o vies com que foram calculadas (ver COMPATIBILIDADE).
-VIES_POOL_PP = 2.35
-
-# Nome da coluna acrescentada em 11/09/2026. Isolado numa constante porque e usado na
-# escrita, na migracao e na leitura.
-COL_VIES = "Vies_Pool_pp"
-
-CABECALHO = [
-    "Data", "Etiqueta", "Agente", "Batalhas_Por_Condicao",
-    "WR_Treino", "WR_Holdout", "Queda_pp", "Queda_Corrigida_pp", "EP_Diferenca_pp",
-    "Margem_Treino", "Margem_Holdout", "Duracao_Treino", "Duracao_Holdout",
-    "Ties_Treino", "Ties_Holdout", "Estados_Novos_Treino", "Estados_Novos_Holdout",
-    COL_VIES,
-]
-
-# Cabecalho ANTERIOR a 11/09/2026, sem `Vies_Pool_pp`. Guardado para reconhecer um
-# ficheiro por migrar sem depender da contagem de colunas.
-CABECALHO_LEGADO = [c for c in CABECALHO if c != COL_VIES]
+ROOT = Path(__file__).resolve().parents[2]
+GENERALIZACAO_DIR = ROOT / "artefatos" / "logs" / "Generalizacao"
+FAIXAS = ("Ausente", "0 visitas", "1 visita", "2 a 4", "5 a 19", "20+ visitas")
 
 
-def _ep_diferenca(p1, p2, n):
-    return (((p1 * (1 - p1)) + (p2 * (1 - p2))) / max(1, n)) ** 0.5 * 100.0
+def _faixa(conhecido, visitas):
+    if not conhecido:
+        return FAIXAS[0]
+    if visitas == 0:
+        return FAIXAS[1]
+    if visitas == 1:
+        return FAIXAS[2]
+    if visitas < 5:
+        return FAIXAS[3]
+    if visitas < 20:
+        return FAIXAS[4]
+    return FAIXAS[5]
 
 
-def vies_da_linha(linha):
-    """Vies aplicado NAQUELA linha, seja ela nova ou antiga.
-
-    Linha nova: le a coluna `Vies_Pool_pp`.
-    Linha antiga: RECUPERA por subtraccao, `Queda_pp - Queda_Corrigida_pp`. As duas
-    colunas sempre existiram, logo isto nao adivinha — reconstroi exactamente o
-    desconto que foi aplicado.
-
-    Devolve `None` so quando nem uma coisa nem outra e legivel.
-    """
-    try:
-        v = linha.get(COL_VIES)
-        if v not in (None, ""):
-            return float(v)
-    except (AttributeError, TypeError, ValueError):
-        pass
-    try:
-        return float(linha["Queda_pp"]) - float(linha["Queda_Corrigida_pp"])
-    except (KeyError, TypeError, ValueError):
-        return None
+def _acao(resultado):
+    base, mecanica = resultado
+    return str(base) + ("_MEC" if mecanica == "ACTIVATE" else "")
 
 
-def _migrar_csv_se_preciso():
-    """Acrescenta a coluna `Vies_Pool_pp` a um ficheiro gravado antes de 11/09/2026.
+class DiagnosticoDecisoes:
+    """Contagens exclusivas desta condicao; nunca reutiliza N(s,a) do treino.
 
-    PORQUE ISTO EXISTE. Fazer `append` de uma linha com uma coluna a mais num CSV cujo
-    cabecalho nao a tem DESALINHA o ficheiro em silencio: o `DictReader` passa a ler o
-    vies na coluna errada e nada avisa. Migra-se uma vez, antes da primeira escrita.
+Referencia: chaves e visitas existentes ANTES da primeira batalha. Copia apenas
+esse indice, nao duplica os vetores Q. As metricas Q descrevem a entrada de cada
+chamada, pois a politica original ainda pode fazer heranca _MEC em memoria.
+"""
 
-    Nao ha perda: as linhas antigas recebem o vies RECUPERADO por `vies_da_linha`, que
-    e o valor exacto com que foram calculadas. Um `.bak` fica ao lado antes de tocar no
-    original.
-    """
-    if not os.path.exists(CSV_HISTORICO):
-        return
-    with open(CSV_HISTORICO, newline="", encoding="utf-8") as f:
-        leitor = csv.DictReader(f)
-        campos = list(leitor.fieldnames or [])
-        if COL_VIES in campos:
-            return                      # ja migrado
-        linhas = list(leitor)
-    if not campos:
-        return
-    import shutil
-    shutil.copy2(CSV_HISTORICO, CSV_HISTORICO + ".bak")
-    for l in linhas:
-        v = vies_da_linha(l)
-        l[COL_VIES] = f"{v:.2f}" if v is not None else ""
-    with open(CSV_HISTORICO, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=campos + [COL_VIES])
+    def __init__(self, jogador):
+        self.brain = getattr(jogador, "brain", None)
+        self.estados = {}
+        self.execucoes = Counter()
+        self.erros_decisao = 0
+        self.erros_executor = 0
+        self.chamadas_executor = 0
+        self.chamadas_choose_move = 0
+        self.erros_choose_move = 0
+        self.referencia = None
+        self._restaurar = []
+        if self.brain is None:
+            return
+        b = self.brain
+        self.referencia = {s: int(b.visit_counts.get(s, 0)) for s in b.q_table}
+        self.limiar = int(getattr(b, "LIMIAR_MADURO", 20))
+        self.indices = {a: i for i, a in enumerate(b.actions)}
+        original = b.decide_action
+
+        def observar(state, valid_actions, ranking_list):
+            abs_state = b._get_abstract_state(state)
+            visitas = int(b.visit_counts.get(abs_state, 0))
+            q = b.q_table.get(abs_state)
+            antes = tuple(float(x) for x in q) if q is not None else None
+            indices = [self.indices[a] for a in valid_actions]
+            zeros_entrada = antes is None or all(antes[i] == 0 for i in indices)
+            try:
+                resultado = original(state, valid_actions, ranking_list)
+            except Exception:
+                self.erros_decisao += 1
+                raise
+            # O brain decide o cold start APOS a heranca _MEC. Observar o vetor
+            # resultante reproduz esse criterio sem repetir sorteios nem a policy.
+            depois = tuple(float(x) for x in b.q_table[abs_state])
+            fallback = visitas == 0 or all(depois[i] == 0 for i in indices)
+            r = self.estados.get(abs_state)
+            if r is None:
+                conhecido = abs_state in self.referencia
+                v0 = self.referencia.get(abs_state, 0)
+                r = dict(conhecido=conhecido, visitas=v0,
+                         faixa=_faixa(conhecido, v0), escolhas=Counter(),
+                         validas=set(), fallback=0, zeros=0, mudancas=0,
+                         criacoes=0, exploratorias=0)
+                self.estados[abs_state] = r
+            r["escolhas"][_acao(resultado)] += 1
+            r["validas"].update(valid_actions)
+            r["fallback"] += int(fallback)
+            r["zeros"] += int(zeros_entrada)
+            r["criacoes"] += int(antes is None)
+            r["mudancas"] += int(antes is not None and antes != depois)
+            r["exploratorias"] += int(bool(getattr(b, "ultima_foi_exploratoria", False)))
+            return resultado
+
+        self._substituir(b, "decide_action", observar)
+        executor = getattr(jogador, "executor", None)
+        if executor is not None and hasattr(executor, "get_best_execution_object"):
+            executar = executor.get_best_execution_object
+
+            def observar_executor(base_action, battle, *args, **kwargs):
+                self.chamadas_executor += 1
+                try:
+                    obj = executar(base_action, battle, *args, **kwargs)
+                except Exception:
+                    self.erros_executor += 1
+                    raise
+                # Nao chama classify_move novamente: evita interferencia e falsas
+                # equivalencias entre intencoes taticas e categorias de golpes.
+                if obj is None:
+                    tipo, identificador = "SEM_OBJETO", ""
+                elif any(obj is p for p in (getattr(battle, "available_switches", None) or [])):
+                    tipo = "TROCA"
+                    identificador = str(getattr(obj, "species", "?"))
+                elif hasattr(obj, "id"):
+                    tipo, identificador = "GOLPE", str(obj.id)
+                else:
+                    tipo, identificador = "OUTRO", type(obj).__name__
+                self.execucoes[(str(base_action), tipo, identificador)] += 1
+                return obj
+
+            self._substituir(executor, "get_best_execution_object", observar_executor)
+
+    def _substituir(self, obj, nome, novo):
+        proprio = nome in vars(obj)
+        anterior = vars(obj).get(nome)
+        self._restaurar.append((obj, nome, proprio, anterior))
+        setattr(obj, nome, novo)
+
+    def fechar(self):
+        for obj, nome, proprio, anterior in reversed(self._restaurar):
+            if proprio:
+                setattr(obj, nome, anterior)
+            else:
+                delattr(obj, nome)
+        self._restaurar.clear()
+        # A classificacao inicial de cada estado observado ja esta nas linhas.
+        self.referencia = None
+        self.brain = None
+
+    def linhas_estados(self):
+        linhas = []
+        for state, r in self.estados.items():
+            counts = r["escolhas"]
+            n = sum(counts.values())
+            entropia = -sum((v / n) * math.log(v / n) for v in counts.values())
+            dominante = max(counts, key=counts.get)
+            linhas.append({
+                "Estado": repr(state), "Presente_Checkpoint": int(r["conhecido"]),
+                "Visitas_Checkpoint": r["visitas"], "Faixa_Checkpoint": r["faixa"],
+                "Decisoes_Medidas": n, "Acoes_Escolhidas": len(counts),
+                "Acoes_Validas_Vistas": len(r["validas"]),
+                "Cobertura_Acoes_pct": 100 * len(counts) / max(1, len(r["validas"])),
+                "Acao_Dominante": dominante, "Dominante_pct": 100 * counts[dominante] / n,
+                "Entropia": entropia, "Acoes_Efetivas": math.exp(entropia),
+                "Decisoes_Fallback_Inicial": r["fallback"],
+                "Decisoes_Q_Validos_Zerados_Entrada": r["zeros"],
+                "Decisoes_Exploratorias": r["exploratorias"],
+                "Entradas_Criadas_Em_Decide": r["criacoes"],
+                "Chamadas_Com_Alteracao_Q_Em_Decide": r["mudancas"],
+            })
+        return sorted(linhas, key=lambda x: (-x["Decisoes_Medidas"], x["Estado"]))
+
+
+def _escrever(caminho, campos, linhas):
+    with Path(caminho).open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=campos)
         w.writeheader()
         w.writerows(linhas)
-    print(f"[plot_generalizacao] CSV migrado: coluna '{COL_VIES}' acrescentada a "
-          f"{len(linhas)} linha(s). Copia em {os.path.basename(CSV_HISTORICO)}.bak")
 
 
-def registar(agente, treino, holdout, etiqueta=""):
-    """Acrescenta uma linha ao historico. `treino` e `holdout` sao os dicionarios
-    devolvidos por `avaliar_condicao`.
-
-    GUARDA CONTRA LINHAS VAZIAS (29/08/2026). O `regua_historico.csv` apareceu com o
-    dobro das linhas, metade delas sem Win Rate — uma escrita no ARRANQUE e outra no
-    FIM de cada corrida. O grafico desenhava duas barras com a mesma etiqueta.
-    Aqui so se grava com resultado: sem batalhas terminadas, nao ha o que registar.
-    """
-    if not treino or not holdout:
-        return None
-    if min(treino.get("batalhas", 0), holdout.get("batalhas", 0)) <= 0:
-        return None
-    os.makedirs(LOGS_DIR, exist_ok=True)
-    _migrar_csv_se_preciso()
-    n = min(treino["batalhas"], holdout["batalhas"])
-    queda = treino["wr"] - holdout["wr"]
-    ep = _ep_diferenca(treino["wr"] / 100.0, holdout["wr"] / 100.0, n)
-
-    novo = not os.path.exists(CSV_HISTORICO)
-    with open(CSV_HISTORICO, "a", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
-        if novo:
-            w.writerow(CABECALHO)
-        w.writerow([
-            datetime.now().strftime("%Y%m%d_%H%M%S"), etiqueta, agente.upper(), n,
-            f"{treino['wr']:.2f}", f"{holdout['wr']:.2f}",
-            f"{queda:+.2f}", f"{queda - VIES_POOL_PP:+.2f}", f"{ep:.2f}",
-            f"{treino['margem']:.2f}", f"{holdout['margem']:.2f}",
-            f"{treino['duracao']:.0f}", f"{holdout['duracao']:.0f}",
-            treino["ties"], holdout["ties"],
-            treino["estados_depois"] - treino["estados_antes"],
-            holdout["estados_depois"] - holdout["estados_antes"],
-            # Grava-se o vies USADO NESTA LINHA. Mudar a constante amanha nao
-            # reescreve o passado: cada corrida guarda o desconto que lhe foi
-            # aplicado, e o grafico le-o de volta linha a linha.
-            f"{VIES_POOL_PP:.2f}",
-        ])
-    return CSV_HISTORICO
-
-
-def ler_historico():
-    if not os.path.exists(CSV_HISTORICO):
-        return []
-    with open(CSV_HISTORICO, newline="", encoding="utf-8") as f:
+def _ler(caminho):
+    with Path(caminho).open(newline="", encoding="utf-8-sig") as f:
         return list(csv.DictReader(f))
 
 
-def gerar_grafico(destino=None, ultimos=8):
-    """Barras emparelhadas treino/holdout, com IC 95% e a queda anotada.
-
-    `ultimos` limita quantos testes aparecem, para o grafico nao ficar ilegivel
-    quando o historico crescer.
-    """
-    linhas = ler_historico()
-    # Ignorar linhas sem Win Rate (ver a guarda em `registar`): ficheiros antigos
-    # podem te-las, e desenha-las produzia barras a zero com a mesma etiqueta.
-    validas = []
-    for l in linhas:
-        try:
-            float(l["WR_Treino"]); float(l["WR_Holdout"])
-            validas.append(l)
-        except (KeyError, TypeError, ValueError):
+def salvar_diagnosticos(caminho_csv, treino, holdout):
+    """Grava acompanhantes com o mesmo prefixo e diretorio da tentativa."""
+    principal = Path(caminho_csv)
+    prefixo = principal.with_suffix("")
+    resumos = []
+    for condicao, resultado in (("Treino", treino), ("Holdout", holdout)):
+        d = resultado.get("diagnostico")
+        if d is None:
             continue
-    if not validas:
-        return None
-    linhas = validas[-ultimos:]
+        linhas = d.linhas_estados()
+        n = sum(r["Decisoes_Medidas"] for r in linhas)
+        resumo = {"Condicao": condicao, "Status": "MEDIDO" if linhas else
+                  ("SEM_DECISOES" if hasattr(d, "limiar") else "NAO_APLICAVEL"),
+                  "Limiar_Maduro": getattr(d, "limiar", ""),
+                  "Chamadas_Choose_Move": d.chamadas_choose_move,
+                  "Erros_Choose_Move": d.erros_choose_move,
+                  "Erros_Decisao": d.erros_decisao,
+                  "Decisoes_Cerebro": n, "Estados_Observados": len(linhas)}
+        for faixa in FAIXAS:
+            resumo["Decisoes_" + faixa] = sum(r["Decisoes_Medidas"] for r in linhas
+                                              if r["Faixa_Checkpoint"] == faixa)
+        maduros = sum(r["Decisoes_Medidas"] for r in linhas
+                      if r["Presente_Checkpoint"] and r["Visitas_Checkpoint"] >= d.limiar)
+        conhecidos = sum(r["Decisoes_Medidas"] for r in linhas if r["Presente_Checkpoint"])
+        for chave, total in (("Conhecidos_pct", conhecidos), ("Maduros_pct", maduros),
+                             ("Fallback_Inicial_pct", sum(r["Decisoes_Fallback_Inicial"] for r in linhas))):
+            resumo[chave] = 100 * total / n if n else ""
+        for campo in ("Cobertura_Acoes_pct", "Dominante_pct", "Acoes_Efetivas"):
+            resumo[campo + "_Ponderado"] = sum(r[campo] * r["Decisoes_Medidas"] for r in linhas) / n if n else ""
+        for campo in ("Decisoes_Q_Validos_Zerados_Entrada", "Decisoes_Exploratorias",
+                      "Entradas_Criadas_Em_Decide", "Chamadas_Com_Alteracao_Q_Em_Decide"):
+            resumo[campo] = sum(r[campo] for r in linhas)
+        resumo["Chamadas_Executor"] = d.chamadas_executor
+        resumo["Erros_Executor"] = d.erros_executor
+        resumos.append(resumo)
+        # Mesmo sem decisoes, o cabecalho explicita a ausencia de observacoes.
+        campos = list(linhas[0]) if linhas else ["Estado", "Decisoes_Medidas"]
+        _escrever(f"{prefixo}_{condicao}_acoes_estado.csv", campos, linhas)
+        acoes = Counter()
+        for r in d.estados.values():
+            acoes.update(r["escolhas"])
+        _escrever(f"{prefixo}_{condicao}_acoes.csv", ["Acao", "Decisoes", "Percentual"],
+                  ({"Acao": a, "Decisoes": v, "Percentual": 100 * v / n}
+                   for a, v in acoes.most_common()))
+        _escrever(f"{prefixo}_{condicao}_executor.csv",
+                  ["Intencao", "Tipo_Objeto", "Objeto", "Chamadas"],
+                  ({"Intencao": a, "Tipo_Objeto": t, "Objeto": o, "Chamadas": v}
+                   for (a, t, o), v in d.execucoes.most_common()))
+    if resumos:
+        _escrever(f"{prefixo}_cobertura.csv", list(resumos[0]), resumos)
 
+
+def gerar_grafico(caminho_csv):
+    """Desempenho e, quando disponivel, cobertura e decisoes desta tentativa."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    import numpy as np
 
-    # ROTULOS (11/09/2026): as corridas de ablacao foram gravadas SEM etiqueta, e tres
-    # barras "BLUE 20260911" sao indistinguiveis. Sem etiqueta, cai-se na data COM
-    # HORA, que e unica por corrida. Preferir sempre `--etiqueta` ao correr.
-    def _rotulo(l):
-        et = (l.get("Etiqueta") or "").strip()
-        if et:
-            return f"{l['Agente']}\n{et}"
-        d = l.get("Data", "")
-        return f"{l['Agente']}\n{d[:8]}\n{d[9:13]}" if len(d) >= 13 else f"{l['Agente']}\n{d[:8]}"
-
-    rotulos = [_rotulo(l) for l in linhas]
-    wt = [float(l["WR_Treino"]) for l in linhas]
-    wh = [float(l["WR_Holdout"]) for l in linhas]
-    n = [int(l["Batalhas_Por_Condicao"]) for l in linhas]
-
-    def ic(p, k):
-        return 1.96 * ((p / 100 * (1 - p / 100) / max(1, k)) ** 0.5) * 100
-
-    et = [ic(p, k) for p, k in zip(wt, n)]
-    eh = [ic(p, k) for p, k in zip(wh, n)]
-
-    x = np.arange(len(linhas))
-    larg = 0.38
-    fig, ax = plt.subplots(figsize=(max(8, len(linhas) * 1.9), 6))
-    ax.bar(x - larg / 2, wt, larg, yerr=et, capsize=4, label="Times de treino",
-           color="#4C72B0")
-    ax.bar(x + larg / 2, wh, larg, yerr=eh, capsize=4, label="Holdout (times novos)",
-           color="#DD8452")
-    ax.axhline(50, color="grey", linestyle="--", linewidth=1, label="Acaso (50%)")
-
-    for i, l in enumerate(linhas):
-        q = float(l["Queda_pp"])
-        qc = float(l["Queda_Corrigida_pp"])
-        topo = max(wt[i] + et[i], wh[i] + eh[i])
-        ax.text(i, topo + 2.5, f"queda {q:+.1f} pp", ha="center",
-                fontweight="bold", fontsize=9)
-        # So mostrar a corrigida quando ela DIFERE da bruta: com pools equivalentes,
-        # repetir o mesmo numero duas vezes so confunde quem le.
-        if abs(q - qc) >= 0.05:
-            ax.text(i, topo + 0.6, f"(corrigida {qc:+.1f})", ha="center",
-                    fontsize=8, color="#555555")
-
-    ax.set_xticks(list(x))
-    ax.set_xticklabels(rotulos, fontsize=9)
-    ax.set_ylabel("Win Rate (%)")
-    ax.set_ylim(0, 100)
-    # ==================================================================
-    # O SUBTITULO LE O VIES DAS BARRAS DESENHADAS (11/09/2026)
-    # ==================================================================
-    # Antes anunciava `VIES_POOL_PP`, a constante ACTUAL. Como o CSV acumula corridas
-    # feitas com valores diferentes, o grafico podia dizer "desconta 2,35" por cima de
-    # barras descontadas a 2,42. Agora le linha a linha e, se divergirem, mostra o
-    # intervalo em vez de escolher um.
-    vieses = [v for v in (vies_da_linha(l) for l in linhas) if v is not None]
-    if not vieses:
-        sub = "barras de erro: IC 95%"
-    elif max(vieses) - min(vieses) < 0.005:
-        v = vieses[0]
-        if abs(v) >= 0.005:
-            sub = (f"barras de erro: IC 95%  |  queda corrigida desconta o vies de "
-                   f"{v:+.2f} pp do pool de eval")
-        else:
-            sub = ("barras de erro: IC 95%  |  pools equivalentes: a queda e toda "
-                   "atribuivel ao agente")
+    p = Path(caminho_csv)
+    linhas = _ler(p)
+    if not linhas:
+        return None
+    r = linhas[-1]
+    if "Delta_Treino_Menos_Holdout_pp" not in r:
+        raise ValueError(f"CSV fora do protocolo Cynthia atual: {p}")
+    condicoes = ("Treino", "Holdout")
+    cores = ("#3576B8", "#D78336")
+    fig, axs = plt.subplots(2, 2, figsize=(14, 9), layout="constrained")
+    wr = [float(r["WR_" + c]) for c in condicoes]
+    ns = [int(r.get("Batalhas_" + c) or r["Batalhas_Por_Condicao"]) for c in condicoes]
+    erros = [1.96 * math.sqrt((w / 100) * (1 - w / 100) / n) * 100
+             for w, n in zip(wr, ns)]
+    axs[0, 0].bar(condicoes, wr, color=cores, yerr=erros, capsize=5)
+    for i, (w, e, n) in enumerate(zip(wr, erros, ns)):
+        axs[0, 0].text(i, min(98, w + e + 2), f"{w:.2f}% | n={n:,}", ha="center")
+    delta = float(r["Delta_Treino_Menos_Holdout_pp"])
+    ep = float(r["EP_Diferenca_pp"])
+    sigma = f"{abs(delta) / ep:.2f} EP" if ep else "EP arredondado a zero"
+    axs[0, 0].set(title=f"Vitorias: IC 95% aproximado\nDelta {delta:+.2f} pp | EP {ep:.2f} pp | {sigma}",
+                   ylabel="Vitorias (%)", ylim=(0, 105))
+    cobertura = p.with_name(p.stem + "_cobertura.csv")
+    dados = {x["Condicao"]: x for x in _ler(cobertura)} if cobertura.exists() else {}
+    disponivel = all(dados.get(c, {}).get("Status") == "MEDIDO" for c in condicoes)
+    if disponivel:
+        for i, c in enumerate(condicoes):
+            d = dados[c]
+            n = int(d["Decisoes_Cerebro"])
+            ys = [100 * int(d["Decisoes_" + f]) / n for f in FAIXAS]
+            xs = [j + (-0.19 if i == 0 else 0.19) for j in range(len(FAIXAS))]
+            axs[0, 1].bar(xs, ys, width=.38, label=c, color=cores[i])
+            for x, y in zip(xs, ys):
+                axs[0, 1].text(x, y + 1, f"{y:.1f}", ha="center", fontsize=8)
+        axs[0, 1].set_xticks(range(len(FAIXAS)), FAIXAS, rotation=18)
+        axs[0, 1].set(title="Decisoes por visitas no checkpoint inicial",
+                      ylabel="Decisoes do cerebro (%)", ylim=(0, 110))
+        axs[0, 1].legend()
+        rotulos = ("Conhecidos", "Maduros", "Fallback inicial")
+        campos = ("Conhecidos_pct", "Maduros_pct", "Fallback_Inicial_pct")
+        for i, c in enumerate(condicoes):
+            ys = [float(dados[c][k]) for k in campos]
+            xs = [j + (-.19 if i == 0 else .19) for j in range(3)]
+            axs[1, 0].bar(xs, ys, width=.38, color=cores[i], label=c)
+            for x, y in zip(xs, ys):
+                axs[1, 0].text(x, y + 1, f"{y:.1f}%", ha="center", fontsize=9)
+        axs[1, 0].set_xticks(range(3), rotulos)
+        axs[1, 0].set(title="Uso da tabela e regra inicial\nIndicadores se sobrepoem; nao somar",
+                      ylabel="Decisoes do cerebro (%)", ylim=(0, 110))
+        axs[1, 0].legend()
+        texto = []
+        for c in condicoes:
+            d = dados[c]
+            texto.append(f"{c}: {int(d['Decisoes_Cerebro']):,} decisoes; "
+                         f"{int(d['Estados_Observados']):,} estados\n"
+                         f"  Cobertura de acoes: {float(d['Cobertura_Acoes_pct_Ponderado']):.2f}%\n"
+                         f"  Dominancia: {float(d['Dominante_pct_Ponderado']):.2f}%\n"
+                         f"  Chamadas com alteracao Q: {d['Chamadas_Com_Alteracao_Q_Em_Decide']}\n"
+                         f"  Entradas criadas em decide: {d['Entradas_Criadas_Em_Decide']}\n")
+        axs[1, 1].text(.02, .97, "\n".join(texto) +
+                       "Contagens incluem estados imaturos e maduros.\n"
+                       "Executor: CSV mostra objetos retornados, nao prova obediencia.\n"
+                       "Q: mede alteracoes em decide_action, nao todas as escritas.",
+                       va="top", fontsize=10, transform=axs[1, 1].transAxes)
+        axs[1, 1].axis("off")
     else:
-        sub = (f"barras de erro: IC 95%  |  vies do pool descontado por corrida: "
-               f"{min(vieses):+.2f} a {max(vieses):+.2f} pp")
-    ax.set_title("Generalizacao: desempenho em times conhecidos vs times novos\n"
-                 + sub)
-    ax.grid(axis="y", alpha=0.3)
-    ax.legend(loc="lower right")
-    fig.tight_layout()
-
-    destino = destino or PNG
-    os.makedirs(os.path.dirname(os.path.abspath(destino)), exist_ok=True)
-    fig.savefig(destino, dpi=130)
+        for ax in (axs[0, 1], axs[1, 0], axs[1, 1]):
+            ax.axis("off")
+            ax.text(.5, .5, "Cobertura nao disponivel nesta tentativa.\n"
+                    "CSV antigo ou agente sem decisoes do cerebro.\n"
+                    "Nao e possivel reconstruir a partir do WR.",
+                    ha="center", va="center", transform=ax.transAxes)
+    fig.suptitle(f"{r.get('Agente', '')} vs {r.get('Regua', 'Cynthia')} | "
+                 f"{r.get('Ciclo', '')} | tentativa {r.get('Tentativa', '')} | seed {r.get('Semente', '')}\n"
+                 "Treino e holdout identificam pools; ambas as condicoes sao avaliacao",
+                 fontsize=13)
+    destino = p.with_name(p.stem + "_dashboard.png")
+    fig.savefig(destino, dpi=140)
     plt.close(fig)
-    return destino
+    # Frequencia REAL de intencoes nesta avaliacao, nao argmax da Q-table.
+    for c in condicoes:
+        arq = p.with_name(p.stem + f"_{c}_acoes.csv")
+        acoes = _ler(arq) if arq.exists() else []
+        if not acoes:
+            continue
+        acoes.sort(key=lambda x: int(x["Decisoes"]), reverse=True)
+        fig, ax = plt.subplots(figsize=(11, max(4, len(acoes) * .27)), layout="constrained")
+        ax.barh([x["Acao"] for x in acoes], [float(x["Percentual"]) for x in acoes], color=cores[condicoes.index(c)])
+        ax.invert_yaxis()
+        ax.set(title=f"{r.get('Agente', '')} vs Cynthia | {c} | intencoes escolhidas",
+               xlabel="Decisoes do cerebro (%)")
+        fig.savefig(p.with_name(p.stem + f"_{c}_acoes.png"), dpi=140)
+        plt.close(fig)
+    return str(destino)
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--csv", type=Path, help="CSV principal de uma tentativa")
+    ap.add_argument("--diretorio", type=Path, default=GENERALIZACAO_DIR)
+    args = ap.parse_args()
+    arquivos = [args.csv] if args.csv else sorted(args.diretorio.rglob("Generalizacao_*.csv"))
+    gerados = 0
+    for p in arquivos:
+        if not p.is_file():
+            ap.error(f"Arquivo inexistente: {p}")
+        with p.open(newline="", encoding="utf-8-sig") as f:
+            campos = next(csv.reader(f), [])
+        if "Delta_Treino_Menos_Holdout_pp" not in campos:
+            continue
+        destino = gerar_grafico(p)
+        if destino:
+            gerados += 1
+            print(f"Grafico: {destino}")
+    if not gerados:
+        print("Nenhum CSV do protocolo Cynthia encontrado.")
 
 
 if __name__ == "__main__":
-    d = gerar_grafico()
-    print(f"Historico: {CSV_HISTORICO}")
-    print(f"Grafico  : {d or '(sem dados)'}")
+    main()
