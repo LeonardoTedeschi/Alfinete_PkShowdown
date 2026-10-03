@@ -1,0 +1,10 @@
+Ciclo: B_11
+Etiqueta: B11 - oficial inicio treino completo
+Agente: Blue
+Batalhas: 550000
+Estados_Q: 2222133
+Maior_abs_Q: 1029.5511405171492
+Saude: saudavel
+Data: 2026-10-02T08:41:53
+Brain_ativo: C:\Projetos Robotica Computacional\Projeto Showdown IA Pokemon\Bot-QV-Pokemon\artefatos\brains\blue_brain.pkl
+CSV_ativo: C:\Projetos Robotica Computacional\Projeto Showdown IA Pokemon\Bot-QV-Pokemon\artefatos\logs\blue_treino_consolidado.csv
