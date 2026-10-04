@@ -24,6 +24,10 @@ from shared import diagnostico
 from shared.definitions import Role, MatchupState, MoveCategory
 
 
+class IntencaoInexecutavelError(RuntimeError):
+    """Intencao do cerebro sem realizacao disponivel; nao autoriza outra acao."""
+
+
 class InstinctExecutor:
     """Converte intenções táticas em objetos concretos de ação do poke-env."""
 
@@ -807,12 +811,26 @@ class InstinctExecutor:
 
     def get_best_execution_object(self, base_action, battle, history=None,
                                   fallback_obediencia=True, comparar_ataques=False,
-                                  atalho_de_pivo=True):
+                                  atalho_de_pivo=True, obediencia_estrita=False):
+        # 03/10/2026: contrato explicito para Blue/Green. O default preserva o
+        # InstinctBot. Writer: TabularAgent passa True; reader: guardas abaixo.
+        # Filtrar/desempatar DENTRO da intencao permanece permitido. Trocar a
+        # intencao por ameaca, mascara ou fallback nao e permitido neste modo.
+        # Caso concreto: BUFF a 40% HP contra boost +2 virava ATTACK_STRONG.
+        if obediencia_estrita:
+            comparar_ataques = False
+            atalho_de_pivo = False
+            fallback_obediencia = True
         if isinstance(base_action, list):
+            if obediencia_estrita:
+                raise IntencaoInexecutavelError("Esperada uma intencao, nao uma lista")
             base_action = base_action[0]
 
         opponent = battle.opponent_active_pokemon
         active = battle.active_pokemon
+
+        if obediencia_estrita and base_action not in MoveCategory.__members__:
+            raise IntencaoInexecutavelError(f"Intencao nao reconhecida: {base_action!r}")
 
         # ==================================================================
         # `SWITCH` GENERICO -> ACCAO EXPLICITA (03/09/2026)
@@ -846,7 +864,7 @@ class InstinctExecutor:
                 base_action = "SWITCH_DEFENSIVE"
 
         # Se estamos ameaçados e feridos, cancela ações de setup lento e ataca.
-        if active and opponent:
+        if not obediencia_estrita and active and opponent:
             is_threat = self._is_threatening(active, opponent, battle)
             if is_threat and active.current_hp_fraction < 0.45:
                 if base_action in ["BUFF", "HAZARD", "STATUS", "DEBUFF", "FIELD_CONTROL"]:
@@ -917,9 +935,25 @@ class InstinctExecutor:
                             best = self._preferir_ataque_muito_melhor(
                                 best, active, opponent, battle, history)
                         return best
+                if obediencia_estrita:
+                    # 03/10/2026: a mascara pode julgar todos os golpes ruins,
+                    # mas isso nao transforma BUFF/HEAL/TECH/PIVOT em ATTACK.
+                    # Preserva a categoria contextual e a consequencia da escolha.
+                    mesma_categoria = [
+                        m for m in battle.available_moves
+                        if self.physics.classify_move(m, opponent, battle) == cat
+                    ]
+                    if mesma_categoria:
+                        best = self._select_best_move_in_category(
+                            mesma_categoria, cat, active, opponent, battle)
+                        return best if best is not None else mesma_categoria[0]
+                    raise IntencaoInexecutavelError(
+                        f"Sem movimento disponivel para {base_action}")
                 # Sem golpes viáveis na categoria pedida -> ataca.
                 base_action = "ATTACK_STRONG"
         except KeyError:
+            if obediencia_estrita:
+                raise
             pass
 
         # SWITCHES (com atalho de pivot, so para o InstinctBot)
@@ -995,6 +1029,9 @@ class InstinctExecutor:
                 switch = self.get_offensive_switch(battle, history)
             if switch:
                 return switch
+            if obediencia_estrita:
+                raise IntencaoInexecutavelError(
+                    f"Sem troca disponivel para {base_action}")
 
         # BLOCO DE ATAQUE
         if base_action in ["ATTACK_STRONG", "ATTACK_PREDICTIVE", "ATTACK_PIVOT", "ATTACK_TECH"]:
@@ -1033,9 +1070,12 @@ class InstinctExecutor:
                 return None
             else:
                 # Obediência: entrega um golpe (mesmo inútil) para a Q-Table ser punida.
-                valid_moves = [m for m in battle.available_moves if m.base_power > 0]
-                if not valid_moves:
-                    valid_moves = battle.available_moves
+                if not obediencia_estrita:
+                    valid_moves = [m for m in battle.available_moves if m.base_power > 0]
+                    if not valid_moves:
+                        valid_moves = battle.available_moves
+                # Em modo estrito mantem os candidatos ofensivos originais.
+                # Nao transforma uma intencao de ataque em um golpe de suporte.
 
             if valid_moves:
                 strong_move = None
@@ -1346,6 +1386,9 @@ class InstinctExecutor:
                     return strong_move
 
         # Fallback final
+        if obediencia_estrita:
+            raise IntencaoInexecutavelError(
+                f"Executor nao encontrou realizacao para {base_action}")
         if battle.available_switches:
             return battle.available_switches[0]
         if battle.available_moves:

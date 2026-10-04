@@ -15,7 +15,10 @@ Partilhado (nesta base):
 
 Diferença (definida nas subclasses via _get_actions_and_ranking):
   - Blue  (HybridAgent): usa o instinto para podar (mask) e ranquear (prior).
-  - Green (PureAgent)  : ignora o instinto; todas as ações legais, sem ranking.
+  - Green (PureAgent)  : sem máscara/ranking de intenções; usa a execução comum.
+
+O Green ainda recebe heurísticas compartilhadas de execução, lead e troca forçada.
+Ausência de ranking de intenções não significa ausência de conhecimento de domínio.
 
 As subclasses implementam APENAS `_get_actions_and_ranking(battle, hist)`.
 """
@@ -26,6 +29,7 @@ import numpy as np
 from poke_env.player import Player
 
 from instinct import build_instinct
+from instinct.execution import IntencaoInexecutavelError
 from qlearning.brain import BlueBrain
 
 from shared.mechanics import marcar_uso, mega_valido, z_move_valido
@@ -42,8 +46,8 @@ class TabularAgent(Player):
                  **kwargs):
         super().__init__(*args, **kwargs)
         self.instinct = build_instinct()
-        # Executor substituivel: o Ash troca-o por um ExecutorMinimo. Os agentes que
-        # nao o substituem usam o do instinto (comportamento anterior inalterado).
+        # Executor compartilhado. Implementacoes substitutas devem aceitar o
+        # contrato obediencia_estrita; nao ha fallback silencioso de assinatura.
         self.executor = self.instinct.executor
         self.brain = BlueBrain(alpha=alpha, gamma=gamma, epsilon=epsilon,
                                min_epsilon=min_epsilon, decay=decay)
@@ -106,6 +110,7 @@ class TabularAgent(Player):
         return self.executor.get_best_lead(battle)
 
     def choose_move(self, battle):
+        intencao_escolhida = False
         try:
             hist = self._get_history(battle)
 
@@ -179,6 +184,7 @@ class TabularAgent(Player):
                 return self.choose_random_move(battle)
 
             action_tuple = self.brain.decide_action(state, valid_actions, ranking_list)
+            intencao_escolhida = True
             # Lido IMEDIATAMENTE a seguir (sem await pelo meio, logo e seguro mesmo
             # com batalhas concorrentes): indica se esta decisao foi exploratoria.
             foi_exploratoria = getattr(self.brain, "ultima_foi_exploratoria", False)
@@ -203,7 +209,13 @@ class TabularAgent(Player):
             # O InstinctBot mantem o atalho (nao tem Q-table para corromper) e
             # por isso o default do parametro e True: nenhum outro chamador muda.
             obj = self.executor.get_best_execution_object(
-                base_action, battle, hist, atalho_de_pivo=False)
+                base_action, battle, hist, atalho_de_pivo=False,
+                obediencia_estrita=True)
+            # 03/10/2026: None nao pode cair em choose_random_move e depois
+            # atribuir a recompensa aleatoria a action_tuple. Falha explicita.
+            if obj is None:
+                raise IntencaoInexecutavelError(
+                    f"Executor devolveu None para {base_action}")
 
             self._decision_time_sum += (time.perf_counter() - _t_dec)
             self._decision_count += 1
@@ -323,13 +335,21 @@ class TabularAgent(Player):
             else:
                 hist['weather_active_prev'] = False
 
-            if obj:
-                if mechanic == "ACTIVATE":
-                    return self._order_with_mechanic(obj, battle)
-                return self.create_order(obj)
-            return self.choose_random_move(battle)
+            # obj foi validado antes de gravar a intencao no historico.
+            if mechanic == "ACTIVATE":
+                return self._order_with_mechanic(obj, battle)
+            return self.create_order(obj)
 
         except Exception:
+            if intencao_escolhida:
+                # 03/10/2026: o except amplo tambem contornava a obediencia.
+                # A transicao anterior ja foi processada; nao deixar uma acao
+                # nao executada (ou a anterior) receber credito no proximo turno.
+                hist['state'] = None
+                hist['last_action'] = None
+                hist['last_was_exploratory'] = False
+                self._log_choose_error()
+                raise
             # DIAGNÓSTICO: imprime o erro real UMA vez por tipo, para não spammar o log
             # mas também não esconder o problema. Sem isto, um bug aqui manifesta-se
             # como "estados=0 / WR baixo" sem pista da causa.
