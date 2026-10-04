@@ -109,6 +109,18 @@ class TabularAgent(Player):
         # de combate. Manter igual evita enviesar a comparação pela ordem de time.
         return self.executor.get_best_lead(battle)
 
+    def _categorias_legais(self, battle):
+        """Intencoes realizaveis, sem poda de utilidade nem acao inventada."""
+        categorias = []
+        for move in battle.available_moves:
+            nome = self.instinct.physics.classify_move(
+                move, battle.opponent_active_pokemon, battle).name
+            if nome in self.brain.actions and nome not in categorias:
+                categorias.append(nome)
+        if battle.available_switches:
+            categorias.extend(("SWITCH_DEFENSIVE", "SWITCH_OFFENSIVE"))
+        return categorias
+
     def choose_move(self, battle):
         intencao_escolhida = False
         try:
@@ -162,11 +174,24 @@ class TabularAgent(Player):
                 switch = self.executor.get_post_faint_switch(battle)
                 return self.create_order(switch) if switch else self.choose_random_move(battle)
 
+            # 04/10/2026: Giga Impact no turno 5 deixou Slaking em recarga
+            # obrigatoria no turno 6. poke-env representa essa unica resposta
+            # como Move('recharge'), SPECIAL com potencia zero: nao e uma
+            # intencao tatica e nao deve chegar a mascara/cerebro/executor.
+            # create_order serializa esse objeto como /choose move 1.
+            # Preserva a ultima decisao e adia seu feedback ate a proxima
+            # decisao real (ou callback terminal), como nas trocas forcadas.
+            # A disponibilidade explicita prevalece sobre flags de efeito.
+            movimentos = battle.available_moves
+            if (len(movimentos) == 1
+                    and getattr(movimentos[0], 'id', None) == 'recharge'
+                    and not battle.available_switches):
+                return self.create_order(movimentos[0])
+
             if not battle.active_pokemon or not battle.opponent_active_pokemon:
                 return self.choose_random_move(battle)
 
             state = self.instinct.parser.get_state(battle)
-            self._learn_from_previous(battle, hist, current_state=state)
 
             # --- Latência de decisão: mede o tempo de decidir + traduzir a ação ---
             _t_dec = time.perf_counter()
@@ -181,7 +206,20 @@ class TabularAgent(Player):
             # `NameError: name 'AntiLoop' is not defined`, abortando qualquer treino
             # a primeira repeticao do orquestrador.
             if not valid_actions:
-                return self.choose_random_move(battle)
+                # 04/10/2026: poda total devolve a escolha ao cerebro.
+                # Nunca joga aleatoriamente nem fabrica ATTACK_STRONG.
+                valid_actions = self._expand_with_mechanic(
+                    self._categorias_legais(battle), battle)
+            if not valid_actions:
+                raise IntencaoInexecutavelError(
+                    f"Sem intencoes legais reconhecidas: batalha={battle.battle_tag} "
+                    f"turno={battle.turn} movimentos="
+                    f"{[getattr(m, 'id', '?') for m in battle.available_moves]}")
+
+            # So consumir a transicao quando houver uma nova decisao possivel.
+            self._learn_from_previous(battle, hist, current_state=state)
+            hist['state'] = None
+            hist['last_action'] = None
 
             action_tuple = self.brain.decide_action(state, valid_actions, ranking_list)
             intencao_escolhida = True
@@ -340,6 +378,13 @@ class TabularAgent(Player):
                 return self._order_with_mechanic(obj, battle)
             return self.create_order(obj)
 
+        except IntencaoInexecutavelError:
+            if intencao_escolhida:
+                hist['state'] = None
+                hist['last_action'] = None
+                hist['last_was_exploratory'] = False
+            self._log_choose_error()
+            raise
         except Exception:
             if intencao_escolhida:
                 # 03/10/2026: o except amplo tambem contornava a obediencia.

@@ -42,6 +42,37 @@ class HybridAgent(TabularAgent):
             # O instinto poda as ações inválidas (e, se USAR_RANKING, também ordena).
             _p, _c, ranking_list, candidate_mask, has_lethal = \
                 self.instinct.policy.get_instinct_profile(battle, hist)
+            # 04/10/2026: se a poda esgotou as opcoes, devolver ao cerebro
+            # TODAS as categorias legais reconhecidas. A rede legada da
+            # mascara priorizava PROTECT e podia inventar ATTACK_STRONG.
+            # Reconstituimos a disponibilidade antes da escolha; nunca
+            # substituimos a intencao depois de o cerebro decidir.
+            categorias_legais = self._categorias_legais(battle)
+            categorias_uteis = set()
+            for move in battle.available_moves:
+                cat = self.instinct.physics.classify_move(
+                    move, battle.opponent_active_pokemon, battle)
+                if cat.name not in self.brain.actions:
+                    continue
+                if (not self.instinct.masker.is_move_useless(
+                        move, battle.opponent_active_pokemon, battle, hist)
+                        and not (cat.name == "HAZARD"
+                                 and self.instinct.masker.is_hazard_already_set(
+                                     move, battle))):
+                    categorias_uteis.add(cat.name)
+            if battle.available_switches:
+                categorias_uteis.update(("SWITCH_DEFENSIVE", "SWITCH_OFFENSIVE"))
+            if categorias_uteis:
+                # PREDITIVO e uma intencao derivada, nao uma classe de golpe.
+                if ("ATTACK_PREDICTIVE" in candidate_mask
+                        and "ATTACK_STRONG" in categorias_uteis):
+                    categorias_uteis.add("ATTACK_PREDICTIVE")
+                candidate_mask = [c for c in candidate_mask if c in categorias_uteis]
+                candidate_mask.extend(c for c in categorias_legais
+                                      if c in categorias_uteis and c not in candidate_mask)
+            else:
+                # Sem nenhuma opcao util, o cerebro recebe TODAS as legais.
+                candidate_mask = categorias_legais
             valid_actions = self._expand_with_mechanic(candidate_mask, battle)
             valid_actions = self._podar_mec_por_overkill(valid_actions, battle, has_lethal)
         else:
@@ -65,8 +96,8 @@ class HybridAgent(TabularAgent):
             # deixa de ser canalizada para as preferências do mestre.
             ranking_list = []
 
-        if not valid_actions:
-            valid_actions = ["ATTACK_STRONG"]
+        # Lista vazia nao autoriza fabricar uma intencao sem realizacao.
+        # Recarga obrigatoria e tratada pela base antes deste metodo.
         return valid_actions, ranking_list
 
     # ------------------------------------------------------------------
