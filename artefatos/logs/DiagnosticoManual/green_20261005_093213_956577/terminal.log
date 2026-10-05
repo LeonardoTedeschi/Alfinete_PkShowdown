@@ -1,0 +1,365 @@
+[CÉREBRO] elite_quota efetiva = 0.100 (default)
+[CÉREBRO] Carregado. Estados: 558746 | Elite: 8958 | Limiar elite: 1100
+
+GREEN | bot: AlfineteGreenDiag | desafios: 5 | humano: qualquer
+Navegador: Find a user -> nome do bot -> Challenge -> [Gen 9] National Dex
+Logs: C:\Projetos Robotica Computacional\Projeto Showdown IA Pokemon\Bot-QV-Pokemon\artefatos\logs\DiagnosticoManual\green_20261005_093213_956577
+Aprendizado desligado; checkpoint nao sera salvo.
+[HAZ] turno=1 golpe=stealthrock alvo=STEALTH_ROCK raw={} normalizado={}
+[DECISAO] battle-gen9nationaldex-16712636 T1 ('HAZARD', None) -> /choose move stealthrock | 2.35 ms
+  [Q] visitas=242 inicial=False valores={'SWITCH_OFFENSIVE': -55.93944564929576, 'HAZARD': -51.51344126991688, 'ATTACK_TECH': -59.03077594260048, 'SWITCH_DEFENSIVE': -58.69690649485048, 'ATTACK_STRONG': -58.443661195647316}
+[QUAR] SAIDA turno=2 tag=battle-gen9nationaldex-16712636 par=('torkoal','greattusk') registo={('torkoal', 'greattusk'): 2}
+[DECISAO] battle-gen9nationaldex-16712636 T2 ('SWITCH_OFFENSIVE', None) -> /choose switch Venusaur | 1.28 ms
+  [Q] visitas=2 inicial=False valores={'SWITCH_OFFENSIVE': 0.0, 'ATTACK_STRONG': 0.0, 'ATTACK_TECH': -9.092269666037643, 'HAZARD': 0.0, 'SWITCH_DEFENSIVE': 0.0}
+[QUAR] CONSULTA turno=3 tag=battle-gen9nationaldex-16712636 par=('houndoom', 'greattusk') turno_saida=None registo={('torkoal', 'greattusk'): 2}
+[QUAR] CONSULTA turno=3 tag=battle-gen9nationaldex-16712636 par=('torkoal', 'greattusk') turno_saida=2 registo={('torkoal', 'greattusk'): 2}
+[QUAR] CONSULTA turno=3 tag=battle-gen9nationaldex-16712636 par=('landorustherian', 'greattusk') turno_saida=None registo={('torkoal', 'greattusk'): 2}
+[QUAR] CONSULTA turno=3 tag=battle-gen9nationaldex-16712636 par=('tapufini', 'greattusk') turno_saida=None registo={('torkoal', 'greattusk'): 2}
+[QUAR] CONSULTA turno=3 tag=battle-gen9nationaldex-16712636 par=('blaziken', 'greattusk') turno_saida=None registo={('torkoal', 'greattusk'): 2}
+[QUAR] SAIDA turno=3 tag=battle-gen9nationaldex-16712636 par=('venusaur','greattusk') registo={('torkoal', 'greattusk'): 2, ('venusaur', 'greattusk'): 3}
+[DECISAO] battle-gen9nationaldex-16712636 T3 ('SWITCH_DEFENSIVE', None) -> /choose switch Landorus | 1.97 ms
+  [Q] visitas=0 inicial=True valores={'SWITCH_DEFENSIVE': 0.0, 'SWITCH_OFFENSIVE': 0.0, 'ATTACK_STRONG': 0.0, 'BUFF': 0.0, 'ATTACK_TECH': 0.0}
+[DECISAO] battle-gen9nationaldex-16712636 T4 ('ATTACK_PIVOT', None) -> /choose move uturn | 0.85 ms
+  [Q] visitas=0 inicial=True valores={'ATTACK_PIVOT': 0.0, 'CLEAN_HAZARD': 0.0, 'ATTACK_STRONG': 0.0, 'SWITCH_DEFENSIVE': 0.0, 'SWITCH_OFFENSIVE': 0.0}
+[DECISAO] battle-gen9nationaldex-16712636 T4 sem escolha tabular -> /choose switch Tapu Fini | 0.50 ms
+[DECISAO] battle-gen9nationaldex-16712636 T5 ('ATTACK_TECH', None) -> /choose move scald | 0.85 ms
+  [Q] visitas=0 inicial=True valores={'ATTACK_TECH': 0.0, 'SWITCH_DEFENSIVE': 0.0, 'ATTACK_STRONG': 0.0, 'SWITCH_OFFENSIVE': 0.0, 'DISRUPTION': 0.0}
+[QUAR] CONSULTA turno=6 tag=battle-gen9nationaldex-16712636 par=('houndoom', 'melmetal') turno_saida=None registo={('torkoal', 'greattusk'): 2, ('venusaur', 'greattusk'): 3}
+[QUAR] CONSULTA turno=6 tag=battle-gen9nationaldex-16712636 par=('torkoal', 'melmetal') turno_saida=None registo={('torkoal', 'greattusk'): 2, ('venusaur', 'greattusk'): 3}
+[QUAR] CONSULTA turno=6 tag=battle-gen9nationaldex-16712636 par=('venusaur', 'melmetal') turno_saida=None registo={('torkoal', 'greattusk'): 2, ('venusaur', 'greattusk'): 3}
+[QUAR] CONSULTA turno=6 tag=battle-gen9nationaldex-16712636 par=('blaziken', 'melmetal') turno_saida=None registo={('torkoal', 'greattusk'): 2, ('venusaur', 'greattusk'): 3}
+[QUAR] SAIDA turno=6 tag=battle-gen9nationaldex-16712636 par=('tapufini','melmetal') registo={('torkoal', 'greattusk'): 2, ('venusaur', 'greattusk'): 3, ('tapufini', 'melmetal'): 6}
+[DECISAO] battle-gen9nationaldex-16712636 T6 ('SWITCH_DEFENSIVE', None) -> /choose switch Torkoal | 1.68 ms
+  [Q] visitas=89 inicial=False valores={'SWITCH_DEFENSIVE': -17.2463661455015, 'ATTACK_STRONG': -20.228309979421613, 'ATTACK_TECH': -33.02026725828065, 'DISRUPTION': -20.32127352434972, 'SWITCH_OFFENSIVE': -25.76390391232442}
+[DECISAO] battle-gen9nationaldex-16712636 T7 ('ATTACK_STRONG', None) -> /choose move lavaplume | 1.34 ms
+  [Q] visitas=1 inicial=True valores={'ATTACK_STRONG': 0.0, 'SWITCH_DEFENSIVE': 0.0, 'ATTACK_TECH': 0.0, 'HAZARD': 0.0, 'SWITCH_OFFENSIVE': 0.0}
+[DECISAO] battle-gen9nationaldex-16712636 T7 sem escolha tabular -> /choose switch Houndoom | 0.38 ms
+[DECISAO] battle-gen9nationaldex-16712636 T8 ('ATTACK_STRONG', None) -> /choose move flamethrower | 1.70 ms
+  [Q] visitas=4 inicial=False valores={'ATTACK_STRONG': -8.780795129661081, 'ATTACK_STRONG_MEC': -8.780795129661081, 'SWITCH_OFFENSIVE': -11.041125253276235, 'SWITCH_DEFENSIVE': -25.09680250664774}
+[DECISAO] battle-gen9nationaldex-16712636 T9 ('ATTACK_STRONG', None) -> /choose move solarbeam | 1.61 ms
+  [Q] visitas=3 inicial=False valores={'ATTACK_STRONG': 0.0, 'SWITCH_OFFENSIVE': -5.201010385536213, 'SWITCH_DEFENSIVE': -4.198893297491795, 'ATTACK_STRONG_MEC': 0.0}
+[DECISAO] battle-gen9nationaldex-16712636 T9 sem escolha tabular -> /choose switch Tapu Fini | 0.30 ms
+[DECISAO] battle-gen9nationaldex-16712636 T10 ('DISRUPTION', None) -> /choose move taunt | 0.68 ms
+  [Q] visitas=0 inicial=True valores={'DISRUPTION': 0.0, 'SWITCH_DEFENSIVE': 0.0, 'SWITCH_OFFENSIVE': 0.0, 'ATTACK_TECH': 0.0, 'ATTACK_STRONG': 0.0}
+[DECISAO] battle-gen9nationaldex-16712636 T11 ('ATTACK_TECH', None) -> /choose move scald | 0.76 ms
+  [Q] visitas=0 inicial=True valores={'ATTACK_TECH': 0.0, 'DISRUPTION': 0.0, 'ATTACK_STRONG': 0.0, 'SWITCH_DEFENSIVE': 0.0, 'SWITCH_OFFENSIVE': 0.0}
+[QUAR] CONSULTA turno=12 tag=battle-gen9nationaldex-16712636 par=('venusaur', 'pecharunt') turno_saida=None registo={('torkoal', 'greattusk'): 2, ('venusaur', 'greattusk'): 3, ('tapufini', 'melmetal'): 6}
+[QUAR] CONSULTA turno=12 tag=battle-gen9nationaldex-16712636 par=('blaziken', 'pecharunt') turno_saida=None registo={('torkoal', 'greattusk'): 2, ('venusaur', 'greattusk'): 3, ('tapufini', 'melmetal'): 6}
+[QUAR] SAIDA turno=12 tag=battle-gen9nationaldex-16712636 par=('tapufini','pecharunt') registo={('torkoal', 'greattusk'): 2, ('venusaur', 'greattusk'): 3, ('tapufini', 'melmetal'): 6, ('tapufini', 'pecharunt'): 12}
+[DECISAO] battle-gen9nationaldex-16712636 T12 ('SWITCH_OFFENSIVE', None) -> /choose switch Venusaur | 1.67 ms
+  [Q] visitas=1 inicial=False valores={'SWITCH_OFFENSIVE': 0.0, 'SWITCH_DEFENSIVE': -14.516395407844179, 'ATTACK_STRONG': 0.0, 'ATTACK_TECH': 0.0, 'DISRUPTION': 0.0}
+[DECISAO] battle-gen9nationaldex-16712636 T13 ('ATTACK_TECH', None) -> /choose move gigadrain | 0.93 ms
+  [Q] visitas=6 inicial=False valores={'ATTACK_TECH': 0.0, 'ATTACK_STRONG': -20.18898073447593, 'SWITCH_OFFENSIVE': 0.0, 'SWITCH_DEFENSIVE': -16.81351116103462, 'BUFF': 0.0}
+[DECISAO] battle-gen9nationaldex-16712636 T13 sem escolha tabular -> /choose switch Blaziken | 0.26 ms
+[QUAR] CONSULTA turno=14 tag=battle-gen9nationaldex-16712636 par=('tapufini', 'pecharunt') turno_saida=12 registo={('torkoal', 'greattusk'): 2, ('venusaur', 'greattusk'): 3, ('tapufini', 'melmetal'): 6, ('tapufini', 'pecharunt'): 12}
+[QUAR] SAIDA turno=14 tag=battle-gen9nationaldex-16712636 par=('blaziken','pecharunt') registo={('torkoal', 'greattusk'): 2, ('venusaur', 'greattusk'): 3, ('tapufini', 'melmetal'): 6, ('tapufini', 'pecharunt'): 12, ('blaziken', 'pecharunt'): 14}
+[DECISAO] battle-gen9nationaldex-16712636 T14 ('SWITCH_OFFENSIVE', None) -> /choose switch Tapu Fini | 1.05 ms
+  [Q] visitas=0 inicial=True valores={'SWITCH_OFFENSIVE': 0.0, 'ATTACK_STRONG': 0.0, 'PROTECT_MEC': 0.0, 'BUFF': 0.0, 'PROTECT': 0.0, 'BUFF_MEC': 0.0, 'ATTACK_STRONG_MEC': 0.0, 'SWITCH_DEFENSIVE': 0.0}
+[DECISAO] battle-gen9nationaldex-16712636 T15 ('DISRUPTION', None) -> /choose move taunt | 0.74 ms
+  [Q] visitas=72 inicial=False valores={'SWITCH_OFFENSIVE': -23.277005850889182, 'SWITCH_DEFENSIVE': -17.82407317428177, 'ATTACK_STRONG': -37.08256680646463, 'DISRUPTION': 0.0, 'ATTACK_TECH': -24.412940766938}
+[DECISAO] battle-gen9nationaldex-16712636 T15 sem escolha tabular -> /choose switch Blaziken | 0.20 ms
+[DECISAO] battle-gen9nationaldex-16712636 T16 ('ATTACK_STRONG', None) -> /choose move flareblitz | 0.94 ms
+  [Q] visitas=3 inicial=True valores={'ATTACK_STRONG': 0.0, 'BUFF': 0.0, 'ATTACK_STRONG_MEC': 0.0, 'BUFF_MEC': 0.0, 'PROTECT': 0.0, 'PROTECT_MEC': 0.0}
+[DECISAO] battle-gen9nationaldex-16712636 T17 ('ATTACK_STRONG', None) -> /choose move flareblitz | 1.03 ms
+  [Q] visitas=0 inicial=True valores={'ATTACK_STRONG': 0.0, 'PROTECT': 0.0, 'BUFF_MEC': 0.0, 'ATTACK_STRONG_MEC': 0.0, 'BUFF': 0.0, 'PROTECT_MEC': 0.0}
+[DECISAO] battle-gen9nationaldex-16712636 T18 ('ATTACK_STRONG', None) -> /choose move flareblitz | 1.08 ms
+  [Q] visitas=2 inicial=False valores={'ATTACK_STRONG_MEC': -7.468413743983192, 'BUFF_MEC': -4.574663216863488, 'ATTACK_STRONG': 0.0, 'BUFF': 0.0, 'PROTECT': 0.0, 'PROTECT_MEC': 0.0}
+[ESPERA] 61s sem decisao/fim. Pendentes: []. Pode ser espera pelo humano.
+[DECISAO] battle-gen9nationaldex-16712637 T1 ('ATTACK_STRONG', None) -> /choose move thunderbolt | 1.37 ms
+  [Q] visitas=430 inicial=False valores={'SWITCH_DEFENSIVE': -125.72649017536386, 'SWITCH_OFFENSIVE': -140.25842322244998, 'HEAL': -117.23539925418201, 'ATTACK_PIVOT': -129.37061946300605, 'ATTACK_STRONG': -115.40788197250518}
+[DECISAO] battle-gen9nationaldex-16712637 T2 ('HEAL', None) -> /choose move roost | 1.01 ms
+  [Q] visitas=100 inicial=False valores={'ATTACK_STRONG': -45.81554918033746, 'SWITCH_OFFENSIVE': -56.759827897697846, 'ATTACK_PIVOT': -47.261194171501536, 'HEAL': -42.46164419873995, 'SWITCH_DEFENSIVE': -47.092458317994485}
+[DECISAO] battle-gen9nationaldex-16712637 T3 ('ATTACK_PIVOT', None) -> /choose move uturn | 1.02 ms
+  [Q] visitas=16 inicial=False valores={'SWITCH_DEFENSIVE': -20.40851309628747, 'SWITCH_OFFENSIVE': -24.594443505851576, 'HEAL': -21.077069636929927, 'ATTACK_STRONG': -15.984380945134525, 'ATTACK_PIVOT': -13.963777785883671}
+[DECISAO] battle-gen9nationaldex-16712637 T3 sem escolha tabular -> /choose switch Gliscor | 0.47 ms
+[DECISAO] battle-gen9nationaldex-16712637 T4 ('ATTACK_PIVOT', None) -> /choose move uturn | 0.84 ms
+  [Q] visitas=14 inicial=False valores={'ATTACK_PIVOT': 6.9890886005981665, 'HEAL': -1.2653007826404576, 'ATTACK_STRONG': -3.364144669454517, 'SWITCH_DEFENSIVE': -15.930044620972224, 'SWITCH_OFFENSIVE': -6.738945439998774, 'CLEAN_HAZARD': -4.6255653813782756}
+[DECISAO] battle-gen9nationaldex-16712637 T4 sem escolha tabular -> /choose switch Heatran | 0.46 ms
+[DECISAO] battle-gen9nationaldex-16712637 T5 ('DISRUPTION', None) -> /choose move taunt | 0.77 ms
+  [Q] visitas=130 inicial=False valores={'HAZARD': -19.568833787162088, 'ATTACK_STRONG': -66.78849307275186, 'DISRUPTION': -18.141879161419926, 'SWITCH_OFFENSIVE': -72.51247599615891, 'SWITCH_DEFENSIVE': -72.02344436570391}
+[HAZ] turno=6 golpe=stealthrock alvo=STEALTH_ROCK raw={} normalizado={}
+[HAZ] turno=6 golpe=stealthrock alvo=STEALTH_ROCK raw={} normalizado={}
+[DECISAO] battle-gen9nationaldex-16712637 T6 ('HAZARD', None) -> /choose move stealthrock | 2.17 ms
+  [Q] visitas=17 inicial=False valores={'HAZARD': -3.7611976169481327, 'SWITCH_DEFENSIVE': -35.44386461777867, 'ATTACK_STRONG': -13.770590942868026, 'DISRUPTION': -18.12744111179937, 'SWITCH_OFFENSIVE': -17.819328733518393}
+[HAZ] turno=7 golpe=stealthrock alvo=STEALTH_ROCK raw={<SideCondition.STEALTH_ROCK: 19>: 6} normalizado={'STEALTH_ROCK': 1}
+[DECISAO] battle-gen9nationaldex-16712637 T7 ('HAZARD', None) -> /choose move stealthrock | 1.27 ms
+  [Q] visitas=4 inicial=False valores={'ATTACK_STRONG': -3.8954840956144094, 'HAZARD': 0.0, 'SWITCH_OFFENSIVE': -1.6625959687383098, 'DISRUPTION': 0.0, 'SWITCH_DEFENSIVE': -5.079513426506948}
+[DECISAO] battle-gen9nationaldex-16712637 T8 ('ATTACK_STRONG', None) -> /choose move earthpower | 0.97 ms
+  [Q] visitas=1 inicial=False valores={'ATTACK_STRONG': 0.0, 'SWITCH_DEFENSIVE': -12.955894861877553, 'HAZARD': 0.0, 'DISRUPTION': 0.0, 'SWITCH_OFFENSIVE': 0.0}
+[DECISAO] battle-gen9nationaldex-16712637 T8 sem escolha tabular -> /choose switch Tapu Koko | 0.43 ms
+[DECISAO] battle-gen9nationaldex-16712637 T9 ('ATTACK_STRONG', None) -> /choose move thunderbolt | 1.44 ms
+  [Q] visitas=0 inicial=True valores={'ATTACK_STRONG': 0.0, 'SWITCH_DEFENSIVE': 0.0, 'HEAL': 0.0, 'SWITCH_OFFENSIVE': 0.0, 'ATTACK_PIVOT': 0.0}
+[DECISAO] battle-gen9nationaldex-16712637 T10 ('HEAL', None) -> /choose move roost | 0.85 ms
+  [Q] visitas=6 inicial=False valores={'ATTACK_STRONG': -12.953280760838783, 'SWITCH_DEFENSIVE': -12.942469708381093, 'SWITCH_OFFENSIVE': -7.807638894553876, 'ATTACK_PIVOT': -7.149775356548442, 'HEAL': 0.0}
+[DECISAO] battle-gen9nationaldex-16712637 T11 ('HEAL', None) -> /choose move roost | 0.83 ms
+  [Q] visitas=5 inicial=False valores={'SWITCH_OFFENSIVE': -9.254113128687141, 'SWITCH_DEFENSIVE': -13.156673054513474, 'ATTACK_PIVOT': -5.227452288654851, 'ATTACK_STRONG': -9.36849990769403, 'HEAL': 0.0}
+[DECISAO] battle-gen9nationaldex-16712637 T12 ('ATTACK_STRONG', None) -> /choose move hiddenpowerice | 1.19 ms
+  [Q] visitas=3 inicial=False valores={'SWITCH_DEFENSIVE': -17.716637508915273, 'ATTACK_STRONG': 0.0, 'SWITCH_OFFENSIVE': 0.0, 'ATTACK_PIVOT': 0.0, 'HEAL': -7.127565196483278}
+[DECISAO] battle-gen9nationaldex-16712637 T12 sem escolha tabular -> /choose switch Gliscor | 0.40 ms
+[DECISAO] battle-gen9nationaldex-16712637 T13 ('HEAL', None) -> /choose move roost | 0.71 ms
+  [Q] visitas=2 inicial=False valores={'SWITCH_DEFENSIVE': -1.2922992372656221, 'HEAL': 0.0, 'ATTACK_STRONG': 0.0, 'SWITCH_OFFENSIVE': -1.560337086935541, 'CLEAN_HAZARD': 0.0, 'ATTACK_PIVOT': 0.0}
+[DECISAO] battle-gen9nationaldex-16712637 T14 ('CLEAN_HAZARD', None) -> /choose move defog | 0.72 ms
+  [Q] visitas=12 inicial=False valores={'SWITCH_OFFENSIVE': -5.91496171130232, 'SWITCH_DEFENSIVE': -8.931591581488714, 'ATTACK_PIVOT': -10.001059037653828, 'ATTACK_STRONG': -4.817761661542581, 'HEAL': -3.4228588801798385, 'CLEAN_HAZARD': 5.396554376075414}
+[DECISAO] battle-gen9nationaldex-16712637 T15 ('ATTACK_PIVOT', None) -> /choose move uturn | 0.76 ms
+  [Q] visitas=4 inicial=False valores={'SWITCH_DEFENSIVE': -4.110065771280501, 'ATTACK_STRONG': -5.365765726301672, 'ATTACK_PIVOT': 0.0, 'CLEAN_HAZARD': 0.0, 'SWITCH_OFFENSIVE': 0.0, 'HEAL': -7.384163234133386}
+[DECISAO] battle-gen9nationaldex-16712637 T15 sem escolha tabular -> /choose switch Xurkitree | 0.35 ms
+[DECISAO] battle-gen9nationaldex-16712637 T16 ('ATTACK_STRONG', 'ACTIVATE') -> /choose move thunderbolt | 1.83 ms
+  [Q] visitas=24 inicial=False valores={'ATTACK_STRONG': -26.803001556275273, 'ATTACK_PIVOT': 0.0, 'ATTACK_PIVOT_MEC': -18.820987609048103, 'SWITCH_OFFENSIVE': -17.74032350905358, 'ATTACK_STRONG_MEC': 16.954308841138786, 'SWITCH_DEFENSIVE': -40.74391894399782}
+[QUAR] SAIDA turno=17 tag=battle-gen9nationaldex-16712637 par=('xurkitree','steelix') registo={('xurkitree', 'steelix'): 17}
+[DECISAO] battle-gen9nationaldex-16712637 T17 ('SWITCH_DEFENSIVE', None) -> /choose switch Gliscor | 1.10 ms
+  [Q] visitas=2 inicial=False valores={'SWITCH_OFFENSIVE': -7.475212131643664, 'SWITCH_DEFENSIVE': 0.0, 'ATTACK_STRONG': 0.0, 'ATTACK_STRONG_MEC': 0.0, 'ATTACK_PIVOT': 0.0, 'ATTACK_PIVOT_MEC': 0.0}
+[QUAR] CONSULTA turno=18 tag=battle-gen9nationaldex-16712637 par=('gallade', 'steelix') turno_saida=None registo={('xurkitree', 'steelix'): 17}
+[QUAR] CONSULTA turno=18 tag=battle-gen9nationaldex-16712637 par=('xurkitree', 'steelix') turno_saida=17 registo={('xurkitree', 'steelix'): 17}
+[QUAR] CONSULTA turno=18 tag=battle-gen9nationaldex-16712637 par=('serperior', 'steelix') turno_saida=None registo={('xurkitree', 'steelix'): 17}
+[QUAR] SAIDA turno=18 tag=battle-gen9nationaldex-16712637 par=('gliscor','steelix') registo={('xurkitree', 'steelix'): 17, ('gliscor', 'steelix'): 18}
+[DECISAO] battle-gen9nationaldex-16712637 T18 ('SWITCH_OFFENSIVE', None) -> /choose switch Serperior | 1.27 ms
+  [Q] visitas=22 inicial=False valores={'ATTACK_PIVOT': -9.781027805853618, 'CLEAN_HAZARD': -7.760257290166457, 'ATTACK_STRONG': -18.94255391237047, 'HEAL': -18.49901266313805, 'SWITCH_OFFENSIVE': -3.5366368539917006, 'SWITCH_DEFENSIVE': -18.85830457566734}
+[DECISAO] battle-gen9nationaldex-16712637 T19 ('STATUS', None) -> /choose move glare | 0.99 ms
+  [Q] visitas=783 inicial=False valores={'SWITCH_OFFENSIVE': -139.72788708800164, 'SWITCH_DEFENSIVE': -145.1777513839184, 'ATTACK_STRONG': -126.97466041163757, 'STATUS': -123.4601098400154}
+[DECISAO] battle-gen9nationaldex-16712637 T20 ('STATUS', None) -> /choose move glare | 0.48 ms
+  [Q] visitas=24 inicial=False valores={'SWITCH_OFFENSIVE': -13.849143149180321, 'SWITCH_DEFENSIVE': -15.605320730785063, 'STATUS': -5.4787234364738655}
+[DECISAO] battle-gen9nationaldex-16712637 T21 ('STATUS', None) -> /choose move glare | 0.48 ms
+  [Q] visitas=24 inicial=False valores={'SWITCH_DEFENSIVE': -15.605320730785063, 'STATUS': -5.4787234364738655, 'SWITCH_OFFENSIVE': -13.849143149180321}
+[DECISAO] battle-gen9nationaldex-16712637 T22 ('STATUS', None) -> /choose move glare | 0.47 ms
+  [Q] visitas=24 inicial=False valores={'SWITCH_OFFENSIVE': -13.849143149180321, 'SWITCH_DEFENSIVE': -15.605320730785063, 'STATUS': -5.4787234364738655}
+[QUAR] CONSULTA turno=23 tag=battle-gen9nationaldex-16712637 par=('gallade', 'steelix') turno_saida=None registo={('xurkitree', 'steelix'): 17, ('gliscor', 'steelix'): 18}
+[QUAR] CONSULTA turno=23 tag=battle-gen9nationaldex-16712637 par=('xurkitree', 'steelix') turno_saida=17 registo={('xurkitree', 'steelix'): 17, ('gliscor', 'steelix'): 18}
+[QUAR] CONSULTA turno=23 tag=battle-gen9nationaldex-16712637 par=('gliscor', 'steelix') turno_saida=18 registo={('xurkitree', 'steelix'): 17, ('gliscor', 'steelix'): 18}
+[QUAR] SAIDA turno=23 tag=battle-gen9nationaldex-16712637 par=('serperior','steelix') registo={('xurkitree', 'steelix'): 17, ('gliscor', 'steelix'): 18, ('serperior', 'steelix'): 23}
+[DECISAO] battle-gen9nationaldex-16712637 T23 ('SWITCH_OFFENSIVE', None) -> /choose switch Gallade | 2.36 ms
+  [Q] visitas=0 inicial=True valores={'SWITCH_OFFENSIVE': 0.0, 'STATUS': 0.0, 'SWITCH_DEFENSIVE': 0.0}
+[DECISAO] battle-gen9nationaldex-16712637 T24 ('BUFF', 'ACTIVATE') -> /choose move swordsdance mega | 0.91 ms
+  [Q] visitas=1 inicial=False valores={'SWITCH_OFFENSIVE': -23.413775540568395, 'BUFF_MEC': 0.0, 'BUFF': 0.0, 'ATTACK_TECH': 0.0, 'SWITCH_DEFENSIVE': 0.0, 'ATTACK_STRONG_MEC': 0.0, 'ATTACK_TECH_MEC': 0.0, 'ATTACK_STRONG': 0.0}
+[DECISAO] battle-gen9nationaldex-16712637 T24 sem escolha tabular -> /choose switch Gliscor | 0.30 ms
+[DECISAO] battle-gen9nationaldex-16712637 T25 ('HEAL', None) -> /choose move roost | 0.69 ms
+  [Q] visitas=1 inicial=False valores={'HEAL': 0.0, 'ATTACK_PIVOT': 0.0, 'ATTACK_STRONG': 0.0, 'SWITCH_OFFENSIVE': 0.0, 'CLEAN_HAZARD': 0.0, 'SWITCH_DEFENSIVE': -7.1069709331648}
+[DECISAO] battle-gen9nationaldex-16712637 T26 ('HEAL', None) -> /choose move roost | 0.73 ms
+  [Q] visitas=0 inicial=True valores={'HEAL': 0.0, 'SWITCH_OFFENSIVE': 0.0, 'ATTACK_PIVOT': 0.0, 'CLEAN_HAZARD': 0.0, 'SWITCH_DEFENSIVE': 0.0, 'ATTACK_STRONG': 0.0}
+[DECISAO] battle-gen9nationaldex-16712637 T27 ('HEAL', None) -> /choose move roost | 0.76 ms
+  [Q] visitas=3 inicial=False valores={'SWITCH_DEFENSIVE': -4.0537312010788, 'HEAL': 0.0, 'CLEAN_HAZARD': 0.0, 'SWITCH_OFFENSIVE': 0.0, 'ATTACK_PIVOT': 0.0, 'ATTACK_STRONG': -7.814528776949594}
+[DECISAO] battle-gen9nationaldex-16712637 T28 ('ATTACK_PIVOT', None) -> /choose move uturn | 0.68 ms
+  [Q] visitas=0 inicial=True valores={'ATTACK_PIVOT': 0.0, 'SWITCH_DEFENSIVE': 0.0, 'HEAL': 0.0, 'CLEAN_HAZARD': 0.0, 'SWITCH_OFFENSIVE': 0.0, 'ATTACK_STRONG': 0.0}
+[DECISAO] battle-gen9nationaldex-16712637 T28 sem escolha tabular -> /choose switch Xurkitree | 0.25 ms
+[DECISAO] battle-gen9nationaldex-16712637 T29 ('ATTACK_PIVOT', None) -> /choose move voltswitch | 0.91 ms
+  [Q] visitas=0 inicial=True valores={'ATTACK_PIVOT': 0.0, 'ATTACK_PIVOT_MEC': 0.0, 'SWITCH_OFFENSIVE': 0.0, 'SWITCH_DEFENSIVE': 0.0, 'ATTACK_STRONG': 0.0, 'ATTACK_STRONG_MEC': 0.0}
+[DECISAO] battle-gen9nationaldex-16712637 T29 sem escolha tabular -> /choose switch Gliscor | 0.26 ms
+[DECISAO] battle-gen9nationaldex-16712637 T30 ('ATTACK_PIVOT', None) -> /choose move uturn | 0.69 ms
+  [Q] visitas=0 inicial=True valores={'ATTACK_PIVOT': 0.0, 'CLEAN_HAZARD': 0.0, 'ATTACK_STRONG': 0.0, 'SWITCH_DEFENSIVE': 0.0, 'HEAL': 0.0, 'SWITCH_OFFENSIVE': 0.0}
+[DECISAO] battle-gen9nationaldex-16712637 T30 sem escolha tabular -> /choose switch Serperior | 0.19 ms
+[DECISAO] battle-gen9nationaldex-16712637 T31 ('ATTACK_STRONG', None) -> /choose move leafstorm | 0.90 ms
+  [Q] visitas=0 inicial=True valores={'ATTACK_STRONG': 0.0, 'STATUS': 0.0}
+[DECISAO] battle-gen9nationaldex-16712638 T1 ('ATTACK_STRONG', None) -> /choose move stoneedge | 1.42 ms
+  [Q] visitas=48 inicial=False valores={'SWITCH_DEFENSIVE': -6.66239412496779, 'SWITCH_OFFENSIVE': -13.607696910199074, 'ATTACK_STRONG_MEC': -9.937965499814982, 'ATTACK_STRONG': -2.648481103886035, 'HAZARD': -15.956631585995943, 'HAZARD_MEC': -7.576323873475787}
+[HAZ] turno=2 golpe=stealthrock alvo=STEALTH_ROCK raw={} normalizado={}
+[HAZ] turno=2 golpe=stealthrock alvo=STEALTH_ROCK raw={} normalizado={}
+[DECISAO] battle-gen9nationaldex-16712638 T2 ('HAZARD', None) -> /choose move stealthrock | 1.96 ms
+  [Q] visitas=5 inicial=False valores={'SWITCH_DEFENSIVE': -2.268678574496483, 'HAZARD': 0.0, 'ATTACK_STRONG_MEC': 0.0, 'HAZARD_MEC': 0.0, 'ATTACK_STRONG': 0.0, 'SWITCH_OFFENSIVE': -6.126030261605174}
+[DECISAO] battle-gen9nationaldex-16712638 T3 ('ATTACK_STRONG', 'ACTIVATE') -> /choose move crunch mega | 1.32 ms
+  [Q] visitas=0 inicial=True valores={'ATTACK_STRONG_MEC': 0.0, 'HAZARD_MEC': 0.0, 'HAZARD': 0.0, 'SWITCH_DEFENSIVE': 0.0, 'ATTACK_STRONG': 0.0, 'SWITCH_OFFENSIVE': 0.0}
+[DECISAO] battle-gen9nationaldex-16712638 T3 sem escolha tabular -> /choose switch DIOR | 0.46 ms
+[QUAR] SAIDA turno=4 tag=battle-gen9nationaldex-16712638 par=('kartana','pelipper') registo={('kartana', 'pelipper'): 4}
+[DECISAO] battle-gen9nationaldex-16712638 T4 ('SWITCH_DEFENSIVE', None) -> /choose switch THE WOO | 1.25 ms
+  [Q] visitas=1 inicial=False valores={'SWITCH_DEFENSIVE': 0.0, 'ATTACK_TECH': 0.0, 'ATTACK_STRONG': 0.0, 'SWITCH_OFFENSIVE': 0.0, 'ATTACK_TECH_MEC': 0.0, 'ATTACK_STRONG_MEC': 0.0, 'BUFF_MEC': -25.55249458890811, 'BUFF': 0.0}
+[QUAR] CONSULTA turno=5 tag=battle-gen9nationaldex-16712638 par=('landorustherian', 'urshifurapidstrike') turno_saida=None registo={('kartana', 'pelipper'): 4}
+[QUAR] CONSULTA turno=5 tag=battle-gen9nationaldex-16712638 par=('skarmory', 'urshifurapidstrike') turno_saida=None registo={('kartana', 'pelipper'): 4}
+[QUAR] CONSULTA turno=5 tag=battle-gen9nationaldex-16712638 par=('kartana', 'urshifurapidstrike') turno_saida=None registo={('kartana', 'pelipper'): 4}
+[QUAR] CONSULTA turno=5 tag=battle-gen9nationaldex-16712638 par=('tapubulu', 'urshifurapidstrike') turno_saida=None registo={('kartana', 'pelipper'): 4}
+[QUAR] SAIDA turno=5 tag=battle-gen9nationaldex-16712638 par=('slowkinggalar','urshifurapidstrike') registo={('kartana', 'pelipper'): 4, ('slowkinggalar', 'urshifurapidstrike'): 5}
+[DECISAO] battle-gen9nationaldex-16712638 T5 ('SWITCH_OFFENSIVE', None) -> /choose switch MAKE IT RAIN | 1.68 ms
+  [Q] visitas=9 inicial=False valores={'SWITCH_DEFENSIVE': -16.988643715069916, 'ATTACK_STRONG': -3.6113003302123996, 'SWITCH_OFFENSIVE': 0.0}
+[DECISAO] battle-gen9nationaldex-16712638 T6 ('BUFF', None) -> /choose move swordsdance | 0.81 ms
+  [Q] visitas=9 inicial=False valores={'SWITCH_DEFENSIVE': -4.926958782661962, 'BUFF': 0.0, 'SWITCH_OFFENSIVE': -0.27361834400498086, 'PROTECT': 0.0, 'ATTACK_STRONG': -3.6038752547350352}
+[DECISAO] battle-gen9nationaldex-16712638 T7 ('BUFF', None) -> /choose move swordsdance | 1.06 ms
+  [Q] visitas=0 inicial=True valores={'BUFF': 0.0, 'ATTACK_STRONG': 0.0, 'PROTECT': 0.0, 'SWITCH_DEFENSIVE': 0.0, 'SWITCH_OFFENSIVE': 0.0}
+[DECISAO] battle-gen9nationaldex-16712638 T7 sem escolha tabular -> /choose switch AIM FOR THE MOON | 0.39 ms
+[DECISAO] battle-gen9nationaldex-16712638 T8 ('HEAL', None) -> /choose move roost | 0.85 ms
+  [Q] visitas=31 inicial=False valores={'HEAL': 2.09879482965957, 'ATTACK_TECH': -14.059766314950675, 'BUFF': 0.0, 'HAZARD': -8.703470487986886, 'SWITCH_DEFENSIVE': -9.196201118878694, 'SWITCH_OFFENSIVE': -15.215303624631604}
+[DECISAO] battle-gen9nationaldex-16712638 T9 ('HEAL', None) -> /choose move roost | 0.92 ms
+  [Q] visitas=31 inicial=False valores={'SWITCH_OFFENSIVE': -15.215303624631604, 'BUFF': 0.0, 'SWITCH_DEFENSIVE': -9.196201118878694, 'HAZARD': -8.703470487986886, 'HEAL': 2.09879482965957, 'ATTACK_TECH': -14.059766314950675}
+[DECISAO] battle-gen9nationaldex-16712638 T10 ('HEAL', None) -> /choose move roost | 0.90 ms
+  [Q] visitas=31 inicial=False valores={'HAZARD': -8.703470487986886, 'SWITCH_DEFENSIVE': -9.196201118878694, 'ATTACK_TECH': -14.059766314950675, 'BUFF': 0.0, 'HEAL': 2.09879482965957, 'SWITCH_OFFENSIVE': -15.215303624631604}
+[DECISAO] battle-gen9nationaldex-16712638 T11 ('BUFF', None) -> /choose move irondefense | 0.68 ms
+  [Q] visitas=42 inicial=False valores={'SWITCH_OFFENSIVE': -8.28545299508271, 'HEAL': -9.958468758834508, 'HAZARD': -7.778769849323563, 'ATTACK_TECH': -0.8352823570463517, 'SWITCH_DEFENSIVE': -8.073949402889532, 'BUFF': 3.7051998759937925}
+[DECISAO] battle-gen9nationaldex-16712638 T12 ('HEAL', None) -> /choose move roost | 0.73 ms
+  [Q] visitas=0 inicial=True valores={'HEAL': 0.0, 'BUFF': 0.0, 'HAZARD': 0.0, 'SWITCH_OFFENSIVE': 0.0, 'SWITCH_DEFENSIVE': 0.0, 'ATTACK_TECH': 0.0}
+[HAZ] turno=13 golpe=spikes alvo=SPIKES raw={<SideCondition.STEALTH_ROCK: 19>: 2} normalizado={'STEALTH_ROCK': 1}
+[HAZ] turno=13 golpe=spikes alvo=SPIKES raw={<SideCondition.STEALTH_ROCK: 19>: 2} normalizado={'STEALTH_ROCK': 1}
+[DECISAO] battle-gen9nationaldex-16712638 T13 ('HAZARD', None) -> /choose move spikes | 1.01 ms
+  [Q] visitas=0 inicial=True valores={'HAZARD': 0.0, 'HEAL': 0.0, 'BUFF': 0.0, 'SWITCH_OFFENSIVE': 0.0, 'SWITCH_DEFENSIVE': 0.0, 'ATTACK_STRONG': 0.0}
+[DECISAO] battle-gen9nationaldex-16712638 T14 ('HEAL', None) -> /choose move roost | 0.79 ms
+  [Q] visitas=0 inicial=True valores={'HEAL': 0.0, 'BUFF': 0.0, 'SWITCH_OFFENSIVE': 0.0, 'SWITCH_DEFENSIVE': 0.0, 'ATTACK_STRONG': 0.0, 'HAZARD': 0.0}
+[DECISAO] battle-gen9nationaldex-16712638 T15 ('HEAL', None) -> /choose move roost | 0.69 ms
+  [Q] visitas=0 inicial=True valores={'HEAL': 0.0, 'HAZARD': 0.0, 'ATTACK_STRONG': 0.0, 'SWITCH_OFFENSIVE': 0.0, 'BUFF': 0.0, 'SWITCH_DEFENSIVE': 0.0}
+[HAZ] turno=16 golpe=spikes alvo=SPIKES raw={<SideCondition.STEALTH_ROCK: 19>: 2, <SideCondition.SPIKES: 18>: 1} normalizado={'STEALTH_ROCK': 1, 'SPIKES': 1}
+[HAZ] turno=16 golpe=spikes alvo=SPIKES raw={<SideCondition.STEALTH_ROCK: 19>: 2, <SideCondition.SPIKES: 18>: 1} normalizado={'STEALTH_ROCK': 1, 'SPIKES': 1}
+[DECISAO] battle-gen9nationaldex-16712638 T16 ('HAZARD', None) -> /choose move spikes | 0.94 ms
+  [Q] visitas=0 inicial=True valores={'HAZARD': 0.0, 'ATTACK_STRONG': 0.0, 'SWITCH_OFFENSIVE': 0.0, 'BUFF': 0.0, 'HEAL': 0.0, 'SWITCH_DEFENSIVE': 0.0}
+[DECISAO] battle-gen9nationaldex-16712638 T17 ('HEAL', None) -> /choose move roost | 0.70 ms
+  [Q] visitas=1 inicial=False valores={'ATTACK_TECH': -2.7880830065530833, 'HEAL': 0.0, 'HAZARD': 0.0, 'SWITCH_OFFENSIVE': 0.0, 'SWITCH_DEFENSIVE': 0.0, 'BUFF': 0.0}
+[QUAR] CONSULTA turno=18 tag=battle-gen9nationaldex-16712638 par=('landorustherian', 'necrozma') turno_saida=None registo={('kartana', 'pelipper'): 4, ('slowkinggalar', 'urshifurapidstrike'): 5}
+[QUAR] CONSULTA turno=18 tag=battle-gen9nationaldex-16712638 par=('kartana', 'necrozma') turno_saida=None registo={('kartana', 'pelipper'): 4, ('slowkinggalar', 'urshifurapidstrike'): 5}
+[QUAR] CONSULTA turno=18 tag=battle-gen9nationaldex-16712638 par=('slowkinggalar', 'necrozma') turno_saida=None registo={('kartana', 'pelipper'): 4, ('slowkinggalar', 'urshifurapidstrike'): 5}
+[QUAR] SAIDA turno=18 tag=battle-gen9nationaldex-16712638 par=('skarmory','necrozma') registo={('kartana', 'pelipper'): 4, ('slowkinggalar', 'urshifurapidstrike'): 5, ('skarmory', 'necrozma'): 18}
+[DECISAO] battle-gen9nationaldex-16712638 T18 ('SWITCH_OFFENSIVE', None) -> /choose switch DIOR | 1.33 ms
+  [Q] visitas=1 inicial=False valores={'SWITCH_OFFENSIVE': 0.0, 'BUFF': 0.0, 'ATTACK_TECH': -2.7880830065530833, 'HEAL': 0.0, 'HAZARD': 0.0, 'SWITCH_DEFENSIVE': 0.0}
+[QUAR] CONSULTA turno=19 tag=battle-gen9nationaldex-16712638 par=('landorustherian', 'necrozma') turno_saida=None registo={('kartana', 'pelipper'): 4, ('slowkinggalar', 'urshifurapidstrike'): 5, ('skarmory', 'necrozma'): 18}
+[QUAR] CONSULTA turno=19 tag=battle-gen9nationaldex-16712638 par=('skarmory', 'necrozma') turno_saida=18 registo={('kartana', 'pelipper'): 4, ('slowkinggalar', 'urshifurapidstrike'): 5, ('skarmory', 'necrozma'): 18}
+[QUAR] CONSULTA turno=19 tag=battle-gen9nationaldex-16712638 par=('slowkinggalar', 'necrozma') turno_saida=None registo={('kartana', 'pelipper'): 4, ('slowkinggalar', 'urshifurapidstrike'): 5, ('skarmory', 'necrozma'): 18}
+[QUAR] SAIDA turno=19 tag=battle-gen9nationaldex-16712638 par=('kartana','necrozma') registo={('kartana', 'pelipper'): 4, ('slowkinggalar', 'urshifurapidstrike'): 5, ('skarmory', 'necrozma'): 18, ('kartana', 'necrozma'): 19}
+[DECISAO] battle-gen9nationaldex-16712638 T19 ('SWITCH_OFFENSIVE', None) -> /choose switch GOT IT ON ME | 1.67 ms
+  [Q] visitas=0 inicial=True valores={'SWITCH_OFFENSIVE': 0.0, 'SWITCH_DEFENSIVE': 0.0, 'ATTACK_STRONG': 0.0, 'ATTACK_TECH': 0.0, 'BUFF_MEC': 0.0, 'ATTACK_STRONG_MEC': 0.0, 'BUFF': 0.0, 'ATTACK_TECH_MEC': 0.0}
+[DECISAO] battle-gen9nationaldex-16712638 T20 ('ATTACK_STRONG', None) -> /choose move earthpower | 1.42 ms
+  [Q] visitas=0 inicial=True valores={'ATTACK_STRONG': 0.0, 'SWITCH_OFFENSIVE': 0.0, 'ATTACK_PIVOT': 0.0, 'CLEAN_HAZARD': 0.0, 'SWITCH_DEFENSIVE': 0.0}
+[DECISAO] battle-gen9nationaldex-16712638 T20 sem escolha tabular -> /choose switch DIOR | 0.35 ms
+[QUAR] CONSULTA turno=21 tag=battle-gen9nationaldex-16712638 par=('skarmory', 'necrozma') turno_saida=18 registo={('kartana', 'pelipper'): 4, ('slowkinggalar', 'urshifurapidstrike'): 5, ('skarmory', 'necrozma'): 18, ('kartana', 'necrozma'): 19}
+[QUAR] CONSULTA turno=21 tag=battle-gen9nationaldex-16712638 par=('slowkinggalar', 'necrozma') turno_saida=None registo={('kartana', 'pelipper'): 4, ('slowkinggalar', 'urshifurapidstrike'): 5, ('skarmory', 'necrozma'): 18, ('kartana', 'necrozma'): 19}
+[QUAR] SAIDA turno=21 tag=battle-gen9nationaldex-16712638 par=('kartana','necrozma') registo={('kartana', 'pelipper'): 4, ('slowkinggalar', 'urshifurapidstrike'): 5, ('skarmory', 'necrozma'): 18, ('kartana', 'necrozma'): 21}
+[DECISAO] battle-gen9nationaldex-16712638 T21 ('SWITCH_OFFENSIVE', None) -> /choose switch AIM FOR THE MOON | 1.13 ms
+  [Q] visitas=0 inicial=True valores={'SWITCH_OFFENSIVE': 0.0, 'ATTACK_STRONG': 0.0, 'ATTACK_STRONG_MEC': 0.0, 'ATTACK_TECH': 0.0, 'BUFF': 0.0, 'ATTACK_TECH_MEC': 0.0, 'SWITCH_DEFENSIVE': 0.0, 'BUFF_MEC': 0.0}
+[DECISAO] battle-gen9nationaldex-16712638 T22 ('HEAL', None) -> /choose move roost | 0.75 ms
+  [Q] visitas=0 inicial=True valores={'HEAL': 0.0, 'ATTACK_TECH': 0.0, 'SWITCH_DEFENSIVE': 0.0, 'BUFF': 0.0, 'SWITCH_OFFENSIVE': 0.0, 'HAZARD': 0.0}
+[DECISAO] battle-gen9nationaldex-16712638 T22 sem escolha tabular -> /choose switch DIOR | 0.26 ms
+[QUAR] CONSULTA turno=23 tag=battle-gen9nationaldex-16712638 par=('slowkinggalar', 'necrozma') turno_saida=None registo={('kartana', 'pelipper'): 4, ('slowkinggalar', 'urshifurapidstrike'): 5, ('skarmory', 'necrozma'): 18, ('kartana', 'necrozma'): 21}
+[QUAR] SAIDA turno=23 tag=battle-gen9nationaldex-16712638 par=('kartana','necrozma') registo={('kartana', 'pelipper'): 4, ('slowkinggalar', 'urshifurapidstrike'): 5, ('skarmory', 'necrozma'): 18, ('kartana', 'necrozma'): 23}
+[DECISAO] battle-gen9nationaldex-16712638 T23 ('SWITCH_DEFENSIVE', None) -> /choose switch THE WOO | 1.08 ms
+  [Q] visitas=0 inicial=True valores={'SWITCH_DEFENSIVE': 0.0, 'BUFF_MEC': 0.0, 'ATTACK_STRONG_MEC': 0.0, 'ATTACK_TECH_MEC': 0.0, 'BUFF': 0.0, 'SWITCH_OFFENSIVE': 0.0, 'ATTACK_TECH': 0.0, 'ATTACK_STRONG': 0.0}
+[QUAR] SAIDA turno=24 tag=battle-gen9nationaldex-16712638 par=('slowkinggalar','necrozma') registo={('kartana', 'pelipper'): 4, ('slowkinggalar', 'urshifurapidstrike'): 5, ('skarmory', 'necrozma'): 18, ('kartana', 'necrozma'): 23, ('slowkinggalar', 'necrozma'): 24}
+[DECISAO] battle-gen9nationaldex-16712638 T24 ('SWITCH_OFFENSIVE', None) -> /choose switch DIOR | 0.85 ms
+  [Q] visitas=1 inicial=False valores={'SWITCH_OFFENSIVE': 0.0, 'ATTACK_STRONG': 0.0, 'SWITCH_DEFENSIVE': -21.326610797470025}
+[DECISAO] battle-gen9nationaldex-16712638 T24 sem escolha tabular -> /choose switch THE WOO | 0.19 ms
+[DECISAO] battle-gen9nationaldex-16712638 T25 ('ATTACK_STRONG', None) -> /choose move sludgebomb | 1.85 ms
+  [Q] visitas=9 inicial=False valores={'ATTACK_STRONG': -24.790459397998827}
+[DECISAO] battle-gen9nationaldex-16712639 T1 ('ATTACK_TECH', None) -> /choose move scald | 0.70 ms
+  [Q] visitas=118 inicial=False valores={'PROTECT': -44.370513834781285, 'DISRUPTION': -52.05781551704486, 'ATTACK_STRONG': -44.3072649715989, 'ATTACK_TECH': -42.652696082206134, 'SWITCH_DEFENSIVE': -43.598572985673236, 'SWITCH_OFFENSIVE': -45.32721842407533}
+[DECISAO] battle-gen9nationaldex-16712639 T1 sem escolha tabular -> /choose switch Zapdos | 0.43 ms
+[DECISAO] battle-gen9nationaldex-16712639 T2 ('ATTACK_STRONG', None) -> /choose move hurricane | 1.49 ms
+  [Q] visitas=10 inicial=False valores={'ATTACK_PIVOT': -11.66431162111504, 'SWITCH_OFFENSIVE': -7.9728067312015725, 'SWITCH_DEFENSIVE': -9.20465299128468, 'HEAL': -26.460139985428153, 'ATTACK_STRONG': -5.990327341272858}
+[DECISAO] battle-gen9nationaldex-16712639 T3 ('ATTACK_STRONG', None) -> /choose move hurricane | 1.20 ms
+  [Q] visitas=19 inicial=False valores={'SWITCH_DEFENSIVE': -18.16097591346105, 'HEAL': -2.648189371405531, 'SWITCH_OFFENSIVE': -10.715991894456558, 'ATTACK_STRONG': 1.3445890891219037, 'ATTACK_PIVOT': 0.0}
+[DECISAO] battle-gen9nationaldex-16712639 T4 ('HEAL', None) -> /choose move roost | 0.87 ms
+  [Q] visitas=0 inicial=True valores={'HEAL': 0.0, 'SWITCH_OFFENSIVE': 0.0, 'ATTACK_PIVOT': 0.0, 'ATTACK_STRONG': 0.0, 'SWITCH_DEFENSIVE': 0.0}
+[DECISAO] battle-gen9nationaldex-16712639 T4 sem escolha tabular -> /choose switch Kingdra | 0.40 ms
+[DECISAO] battle-gen9nationaldex-16712639 T5 ('ATTACK_STRONG', None) -> /choose move surf | 1.78 ms
+  [Q] visitas=0 inicial=True valores={'ATTACK_STRONG': 0.0, 'SWITCH_OFFENSIVE': 0.0, 'SWITCH_DEFENSIVE': 0.0}
+[DECISAO] battle-gen9nationaldex-16712639 T6 ('ATTACK_STRONG', None) -> /choose move dracometeor | 1.74 ms
+  [Q] visitas=2 inicial=False valores={'SWITCH_OFFENSIVE': -1.2322196839644934, 'ATTACK_STRONG': 10.284690385864963, 'SWITCH_DEFENSIVE': 0.0}
+[QUAR] SAIDA turno=7 tag=battle-gen9nationaldex-16712639 par=('kingdra','corviknight') registo={('kingdra', 'corviknight'): 7}
+[DECISAO] battle-gen9nationaldex-16712639 T7 ('SWITCH_DEFENSIVE', None) -> /choose switch Ferrothorn | 1.09 ms
+  [Q] visitas=0 inicial=True valores={'SWITCH_DEFENSIVE': 0.0, 'ATTACK_STRONG': 0.0, 'SWITCH_OFFENSIVE': 0.0}
+[DECISAO] battle-gen9nationaldex-16712639 T8 ('STATUS', None) -> /choose move leechseed | 0.74 ms
+  [Q] visitas=19 inicial=False valores={'HAZARD': -1.0120070213346644, 'SWITCH_OFFENSIVE': -13.38870103807923, 'ATTACK_TECH': -1.8566172814099953, 'SWITCH_DEFENSIVE': -3.05762077801884, 'ATTACK_STRONG': -2.0569096831303417, 'STATUS': 6.185067493277613}
+[DECISAO] battle-gen9nationaldex-16712639 T9 ('ATTACK_TECH', None) -> /choose move knockoff | 0.75 ms
+  [Q] visitas=89 inicial=False valores={'SWITCH_DEFENSIVE': -35.705022910952195, 'ATTACK_STRONG': -43.73747908057216, 'SWITCH_OFFENSIVE': -37.12639234485842, 'HAZARD': -32.71141610162004, 'STATUS': -36.24373501105915, 'ATTACK_TECH': -24.718765731859378}
+[HAZ] turno=10 golpe=spikes alvo=SPIKES raw={} normalizado={}
+[HAZ] turno=10 golpe=spikes alvo=SPIKES raw={} normalizado={}
+[DECISAO] battle-gen9nationaldex-16712639 T10 ('HAZARD', None) -> /choose move spikes | 1.00 ms
+  [Q] visitas=43 inicial=False valores={'HAZARD': -2.0452556267014375, 'SWITCH_DEFENSIVE': -24.458053205969662, 'ATTACK_STRONG': -41.664425692499556, 'SWITCH_OFFENSIVE': -39.23899055353352, 'STATUS': -4.110422226655373}
+[DECISAO] battle-gen9nationaldex-16712639 T11 ('ATTACK_TECH', None) -> /choose move knockoff | 0.86 ms
+  [Q] visitas=56 inicial=False valores={'ATTACK_TECH': 12.741294719993185, 'SWITCH_OFFENSIVE': -19.390044180469687, 'HAZARD': -4.811709693133929, 'ATTACK_STRONG': -9.623012083039203, 'SWITCH_DEFENSIVE': -14.396147687685318, 'STATUS': -6.233005989758575}
+[DECISAO] battle-gen9nationaldex-16712639 T12 ('ATTACK_STRONG', None) -> /choose move knockoff | 1.34 ms
+  [Q] visitas=9 inicial=False valores={'SWITCH_OFFENSIVE': 0.0, 'SWITCH_DEFENSIVE': -10.274006030994041, 'HAZARD': 0.0, 'ATTACK_STRONG': 19.65817378455518, 'STATUS': 0.0}
+[DECISAO] battle-gen9nationaldex-16712639 T12 sem escolha tabular -> /choose switch Toxapex | 0.35 ms
+[DECISAO] battle-gen9nationaldex-16712639 T13 ('HEAL', None) -> /choose move recover | 0.87 ms
+  [Q] visitas=12 inicial=False valores={'HEAL': 0.0, 'STATUS': 0.0, 'SWITCH_OFFENSIVE': 0.0, 'SWITCH_DEFENSIVE': -0.41131981654821015, 'ATTACK_STRONG': -0.9283111323809328, 'STAT_CLEAN': -1.8286318795562506}
+[DECISAO] battle-gen9nationaldex-16712639 T14 ('STAT_CLEAN', None) -> /choose move haze | 0.70 ms
+  [Q] visitas=68 inicial=False valores={'HEAL': -4.878214755558906, 'SWITCH_OFFENSIVE': -9.893738155656823, 'SWITCH_DEFENSIVE': -6.6143105972591645, 'ATTACK_TECH': -10.07958544468943, 'STAT_CLEAN': -4.866219390430483, 'STATUS': -8.513988311261034}
+[DECISAO] battle-gen9nationaldex-16712639 T15 ('STAT_CLEAN', None) -> /choose move haze | 0.64 ms
+  [Q] visitas=108 inicial=False valores={'STATUS': -16.75908819649234, 'ATTACK_TECH': -20.928968936763503, 'SWITCH_OFFENSIVE': -19.99168566399902, 'STAT_CLEAN': -2.5826578585442754, 'HEAL': -17.399669405973818, 'SWITCH_DEFENSIVE': -17.969683960836523}
+[QUAR] CONSULTA turno=16 tag=battle-gen9nationaldex-16712639 par=('barraskewda', 'pelipper') turno_saida=None registo={('kingdra', 'corviknight'): 7}
+[QUAR] CONSULTA turno=16 tag=battle-gen9nationaldex-16712639 par=('kingdra', 'pelipper') turno_saida=None registo={('kingdra', 'corviknight'): 7}
+[QUAR] SAIDA turno=16 tag=battle-gen9nationaldex-16712639 par=('toxapex','pelipper') registo={('kingdra', 'corviknight'): 7, ('toxapex', 'pelipper'): 16}
+[DECISAO] battle-gen9nationaldex-16712639 T16 ('SWITCH_DEFENSIVE', None) -> /choose switch Kingdra | 1.16 ms
+  [Q] visitas=16 inicial=False valores={'ATTACK_TECH': -12.763118779493542, 'SWITCH_DEFENSIVE': 0.46477521800134314, 'HEAL': -11.533317651340443, 'STATUS': -4.520703749199138, 'STAT_CLEAN': 0.0, 'SWITCH_OFFENSIVE': -5.173441551393039}
+[QUAR] CONSULTA turno=17 tag=battle-gen9nationaldex-16712639 par=('barraskewda', 'pelipper') turno_saida=None registo={('kingdra', 'corviknight'): 7, ('toxapex', 'pelipper'): 16}
+[QUAR] CONSULTA turno=17 tag=battle-gen9nationaldex-16712639 par=('toxapex', 'pelipper') turno_saida=16 registo={('kingdra', 'corviknight'): 7, ('toxapex', 'pelipper'): 16}
+[QUAR] SAIDA turno=17 tag=battle-gen9nationaldex-16712639 par=('kingdra','pelipper') registo={('kingdra', 'corviknight'): 7, ('toxapex', 'pelipper'): 16, ('kingdra', 'pelipper'): 17}
+[DECISAO] battle-gen9nationaldex-16712639 T17 ('SWITCH_DEFENSIVE', None) -> /choose switch Barraskewda | 1.47 ms
+  [Q] visitas=29 inicial=False valores={'ATTACK_STRONG': -16.984116610980102, 'SWITCH_DEFENSIVE': -2.875912215423656, 'SWITCH_OFFENSIVE': -11.244099342215915}
+[QUAR] CONSULTA turno=18 tag=battle-gen9nationaldex-16712639 par=('kingdra', 'pelipper') turno_saida=17 registo={('kingdra', 'corviknight'): 7, ('toxapex', 'pelipper'): 16, ('kingdra', 'pelipper'): 17}
+[QUAR] CONSULTA turno=18 tag=battle-gen9nationaldex-16712639 par=('toxapex', 'pelipper') turno_saida=16 registo={('kingdra', 'corviknight'): 7, ('toxapex', 'pelipper'): 16, ('kingdra', 'pelipper'): 17}
+[QUAR] SAIDA turno=18 tag=battle-gen9nationaldex-16712639 par=('barraskewda','pelipper') registo={('kingdra', 'corviknight'): 7, ('toxapex', 'pelipper'): 16, ('kingdra', 'pelipper'): 17, ('barraskewda', 'pelipper'): 18}
+[DECISAO] battle-gen9nationaldex-16712639 T18 ('SWITCH_OFFENSIVE', None) -> /choose switch Kingdra | 1.30 ms
+  [Q] visitas=3 inicial=False valores={'SWITCH_DEFENSIVE': -4.606693541930489, 'ATTACK_STRONG': -13.956955892320888, 'SWITCH_OFFENSIVE': 0.0, 'ATTACK_PIVOT': 0.0}
+[DECISAO] battle-gen9nationaldex-16712639 T19 ('ATTACK_STRONG', None) -> /choose move dracometeor | 1.63 ms
+  [Q] visitas=11 inicial=False valores={'SWITCH_OFFENSIVE': -15.241032455154137, 'ATTACK_STRONG': -5.472336920101651, 'SWITCH_DEFENSIVE': -5.553299614949175}
+[QUAR] CONSULTA turno=20 tag=battle-gen9nationaldex-16712639 par=('barraskewda', 'greninja') turno_saida=None registo={('kingdra', 'corviknight'): 7, ('toxapex', 'pelipper'): 16, ('kingdra', 'pelipper'): 17, ('barraskewda', 'pelipper'): 18}
+[QUAR] CONSULTA turno=20 tag=battle-gen9nationaldex-16712639 par=('toxapex', 'greninja') turno_saida=None registo={('kingdra', 'corviknight'): 7, ('toxapex', 'pelipper'): 16, ('kingdra', 'pelipper'): 17, ('barraskewda', 'pelipper'): 18}
+[QUAR] SAIDA turno=20 tag=battle-gen9nationaldex-16712639 par=('kingdra','greninja') registo={('kingdra', 'corviknight'): 7, ('toxapex', 'pelipper'): 16, ('kingdra', 'pelipper'): 17, ('barraskewda', 'pelipper'): 18, ('kingdra', 'greninja'): 20}
+[DECISAO] battle-gen9nationaldex-16712639 T20 ('SWITCH_OFFENSIVE', None) -> /choose switch Barraskewda | 1.25 ms
+  [Q] visitas=0 inicial=True valores={'SWITCH_OFFENSIVE': 0.0, 'SWITCH_DEFENSIVE': 0.0, 'ATTACK_STRONG': 0.0}
+[DECISAO] battle-gen9nationaldex-16712639 T20 sem escolha tabular -> /choose switch Toxapex | 0.25 ms
+[DECISAO] battle-gen9nationaldex-16712639 T21 ('STAT_CLEAN', None) -> /choose move haze | 0.60 ms
+  [Q] visitas=0 inicial=True valores={'STAT_CLEAN': 0.0, 'SWITCH_OFFENSIVE': 0.0, 'SWITCH_DEFENSIVE': 0.0, 'ATTACK_TECH': 0.0, 'STATUS': 0.0, 'HEAL': 0.0}
+[DECISAO] battle-gen9nationaldex-16712639 T22 ('STATUS', None) -> /choose move toxic | 0.62 ms
+  [Q] visitas=0 inicial=True valores={'STATUS': 0.0, 'STAT_CLEAN': 0.0, 'HEAL': 0.0, 'SWITCH_DEFENSIVE': 0.0, 'ATTACK_TECH': 0.0, 'SWITCH_OFFENSIVE': 0.0}
+[DECISAO] battle-gen9nationaldex-16712639 T23 ('STAT_CLEAN', None) -> /choose move haze | 0.59 ms
+  [Q] visitas=0 inicial=True valores={'STAT_CLEAN': 0.0, 'SWITCH_OFFENSIVE': 0.0, 'HEAL': 0.0, 'STATUS': 0.0, 'SWITCH_DEFENSIVE': 0.0, 'ATTACK_STRONG': 0.0}
+[DECISAO] battle-gen9nationaldex-16712639 T24 ('STAT_CLEAN', None) -> /choose move haze | 0.76 ms
+  [Q] visitas=0 inicial=True valores={'STAT_CLEAN': 0.0, 'SWITCH_DEFENSIVE': 0.0, 'STATUS': 0.0, 'HEAL': 0.0, 'ATTACK_STRONG': 0.0, 'SWITCH_OFFENSIVE': 0.0}
+[QUAR] CONSULTA turno=25 tag=battle-gen9nationaldex-16712639 par=('kingdra', 'greninja') turno_saida=20 registo={('kingdra', 'corviknight'): 7, ('toxapex', 'pelipper'): 16, ('kingdra', 'pelipper'): 17, ('barraskewda', 'pelipper'): 18, ('kingdra', 'greninja'): 20}
+[QUAR] SAIDA turno=25 tag=battle-gen9nationaldex-16712639 par=('toxapex','greninja') registo={('kingdra', 'corviknight'): 7, ('toxapex', 'pelipper'): 16, ('kingdra', 'pelipper'): 17, ('barraskewda', 'pelipper'): 18, ('kingdra', 'greninja'): 20, ('toxapex', 'greninja'): 25}
+[DECISAO] battle-gen9nationaldex-16712639 T25 ('SWITCH_OFFENSIVE', None) -> /choose switch Kingdra | 0.95 ms
+  [Q] visitas=2 inicial=False valores={'SWITCH_OFFENSIVE': 0.0, 'STATUS': -5.301368989963976, 'ATTACK_STRONG': 0.0, 'SWITCH_DEFENSIVE': 0.0, 'STAT_CLEAN': 0.0, 'HEAL': 0.0}
+[DECISAO] battle-gen9nationaldex-16712639 T25 sem escolha tabular -> /choose switch Toxapex | 0.17 ms
+[DECISAO] battle-gen9nationaldex-16712639 T26 ('STATUS', None) -> /choose move toxic | 0.62 ms
+  [Q] visitas=48 inicial=False valores={'STATUS': 0.8972982967978287, 'ATTACK_TECH': -8.364628583296408, 'HEAL': 0.0, 'STAT_CLEAN': 0.0}
+[DECISAO] battle-gen9nationaldex-16712639 T27 ('STATUS', None) -> /choose move toxic | 0.62 ms
+  [Q] visitas=81 inicial=False valores={'ATTACK_TECH': -17.79982090184198, 'HEAL': -14.171260220694588, 'STATUS': 1.6845905144783129, 'STAT_CLEAN': -10.999210623272575}
+[DECISAO] battle-gen9nationaldex-16712639 T28 ('STAT_CLEAN', None) -> /choose move haze | 0.63 ms
+  [Q] visitas=41 inicial=False valores={'STAT_CLEAN': 0.0, 'HEAL': -4.099470201040909, 'ATTACK_TECH': -6.3815621450251125, 'STATUS': 0.0}
+[DECISAO] battle-gen9nationaldex-16712639 T29 ('STAT_CLEAN', None) -> /choose move haze | 0.56 ms
+  [Q] visitas=34 inicial=False valores={'STAT_CLEAN': -7.171118555389267, 'STATUS': -8.091000313131847, 'HEAL': -25.01072317075695, 'ATTACK_TECH': -18.321060613636764}
+[ESPERA] 63s sem decisao/fim. Pendentes: []. Pode ser espera pelo humano.
+[ESPERA] 123s sem decisao/fim. Pendentes: []. Pode ser espera pelo humano.
+[DECISAO] battle-gen9nationaldex-16712640 T1 ('ATTACK_PIVOT', None) -> /choose move uturn | 0.91 ms
+  [Q] visitas=637 inicial=False valores={'SWITCH_DEFENSIVE': -74.16799698632268, 'ATTACK_STRONG': -76.38974518005743, 'SWITCH_OFFENSIVE': -75.76077791793611, 'ATTACK_PIVOT': -71.00768604941106}
+[DECISAO] battle-gen9nationaldex-16712640 T1 sem escolha tabular -> /choose switch Gliscor | 0.39 ms
+[DECISAO] battle-gen9nationaldex-16712640 T1 sem escolha tabular -> /choose switch Serperior | 0.43 ms
+[DECISAO] battle-gen9nationaldex-16712640 T2 ('STATUS', None) -> /choose move glare | 0.86 ms
+  [Q] visitas=86 inicial=False valores={'SWITCH_DEFENSIVE': -44.05056685945274, 'STATUS': -25.297807901125196, 'ATTACK_STRONG': -31.938362060505003, 'SWITCH_OFFENSIVE': -37.504221008527594}
+[QUAR] SAIDA turno=3 tag=battle-gen9nationaldex-16712640 par=('serperior','greattusk') registo={('serperior', 'greattusk'): 3}
+[DECISAO] battle-gen9nationaldex-16712640 T3 ('SWITCH_DEFENSIVE', None) -> /choose switch Hydreigon | 1.19 ms
+  [Q] visitas=4 inicial=False valores={'STATUS': -25.539205775530085, 'SWITCH_DEFENSIVE': -3.7940976142669056, 'ATTACK_STRONG': -9.39448298009173, 'SWITCH_OFFENSIVE': -4.432808545264606}
+[DECISAO] battle-gen9nationaldex-16712640 T4 ('ATTACK_PIVOT', None) -> /choose move uturn | 0.94 ms
+  [Q] visitas=7 inicial=False valores={'ATTACK_PIVOT': 0.0, 'SWITCH_OFFENSIVE': 0.0, 'SWITCH_DEFENSIVE': -4.891517307516717, 'ATTACK_STRONG': -9.613158420436955}
+[DECISAO] battle-gen9nationaldex-16712640 T4 sem escolha tabular -> /choose switch Serperior | 0.39 ms
+[DECISAO] battle-gen9nationaldex-16712640 T5 ('ATTACK_STRONG', None) -> /choose move leafstorm | 1.20 ms
+  [Q] visitas=1 inicial=False valores={'ATTACK_STRONG': 0.0, 'SWITCH_DEFENSIVE': -6.132743747366796, 'SWITCH_OFFENSIVE': 0.0, 'STATUS': 0.0}
+[QUAR] CONSULTA turno=6 tag=battle-gen9nationaldex-16712640 par=('komala', 'tornadustherian') turno_saida=None registo={('serperior', 'greattusk'): 3}
+[QUAR] CONSULTA turno=6 tag=battle-gen9nationaldex-16712640 par=('magnezone', 'tornadustherian') turno_saida=None registo={('serperior', 'greattusk'): 3}
+[QUAR] CONSULTA turno=6 tag=battle-gen9nationaldex-16712640 par=('aggron', 'tornadustherian') turno_saida=None registo={('serperior', 'greattusk'): 3}
+[QUAR] SAIDA turno=6 tag=battle-gen9nationaldex-16712640 par=('serperior','tornadustherian') registo={('serperior', 'greattusk'): 3, ('serperior', 'tornadustherian'): 6}
+[DECISAO] battle-gen9nationaldex-16712640 T6 ('SWITCH_OFFENSIVE', None) -> /choose switch Magnezone | 1.27 ms
+  [Q] visitas=1 inicial=False valores={'ATTACK_STRONG': -4.5130751325133005, 'SWITCH_OFFENSIVE': 0.0, 'SWITCH_DEFENSIVE': 0.0, 'STATUS': 0.0}
+[DECISAO] battle-gen9nationaldex-16712640 T7 ('STATUS', 'ACTIVATE') -> /choose move substitute | 0.84 ms
+  [Q] visitas=0 inicial=True valores={'STATUS_MEC': 0.0, 'ATTACK_STRONG': 0.0, 'ATTACK_STRONG_MEC': 0.0, 'SWITCH_OFFENSIVE': 0.0, 'STATUS': 0.0, 'SWITCH_DEFENSIVE': 0.0}
+[DECISAO] battle-gen9nationaldex-16712640 T8 ('STATUS', None) -> /choose move substitute | 1.06 ms
+  [Q] visitas=1 inicial=False valores={'STATUS': 0.0, 'STATUS_MEC': 0.0, 'SWITCH_OFFENSIVE': 0.0, 'ATTACK_STRONG_MEC': -9.54417380824915, 'ATTACK_STRONG': 0.0, 'SWITCH_DEFENSIVE': 0.0}
+[DECISAO] battle-gen9nationaldex-16712640 T8 sem escolha tabular -> /choose switch Aggron | 0.36 ms
+[QUAR] CONSULTA turno=9 tag=battle-gen9nationaldex-16712640 par=('komala', 'tornadustherian') turno_saida=None registo={('serperior', 'greattusk'): 3, ('serperior', 'tornadustherian'): 6}
+[QUAR] CONSULTA turno=9 tag=battle-gen9nationaldex-16712640 par=('serperior', 'tornadustherian') turno_saida=6 registo={('serperior', 'greattusk'): 3, ('serperior', 'tornadustherian'): 6}
+[QUAR] SAIDA turno=9 tag=battle-gen9nationaldex-16712640 par=('aggron','tornadustherian') registo={('serperior', 'greattusk'): 3, ('serperior', 'tornadustherian'): 6, ('aggron', 'tornadustherian'): 9}
+[DECISAO] battle-gen9nationaldex-16712640 T9 ('SWITCH_DEFENSIVE', None) -> /choose switch Komala | 1.11 ms
+  [Q] visitas=0 inicial=True valores={'SWITCH_DEFENSIVE': 0.0, 'ATTACK_STRONG': 0.0, 'ATTACK_TECH': 0.0, 'STATUS': 0.0, 'ATTACK_STRONG_MEC': 0.0, 'HAZARD_MEC': 0.0, 'STATUS_MEC': 0.0, 'SWITCH_OFFENSIVE': 0.0, 'HAZARD': 0.0, 'ATTACK_TECH_MEC': 0.0}
+[QUAR] CONSULTA turno=10 tag=battle-gen9nationaldex-16712640 par=('aggron', 'melmetal') turno_saida=None registo={('serperior', 'greattusk'): 3, ('serperior', 'tornadustherian'): 6, ('aggron', 'tornadustherian'): 9}
+[QUAR] CONSULTA turno=10 tag=battle-gen9nationaldex-16712640 par=('serperior', 'melmetal') turno_saida=None registo={('serperior', 'greattusk'): 3, ('serperior', 'tornadustherian'): 6, ('aggron', 'tornadustherian'): 9}
+[QUAR] SAIDA turno=10 tag=battle-gen9nationaldex-16712640 par=('komala','melmetal') registo={('serperior', 'greattusk'): 3, ('serperior', 'tornadustherian'): 6, ('aggron', 'tornadustherian'): 9, ('komala', 'melmetal'): 10}
+[DECISAO] battle-gen9nationaldex-16712640 T10 ('SWITCH_OFFENSIVE', None) -> /choose switch Aggron | 1.01 ms
+  [Q] visitas=10 inicial=False valores={'SWITCH_DEFENSIVE': -11.868753792907349, 'SWITCH_OFFENSIVE': -2.47553251363158, 'ATTACK_STRONG': -4.339604002450962, 'STATUS': -6.033855445957861}
+[HAZ] turno=11 golpe=stealthrock alvo=STEALTH_ROCK raw={} normalizado={}
+[HAZ] turno=11 golpe=stealthrock alvo=STEALTH_ROCK raw={} normalizado={}
+[DECISAO] battle-gen9nationaldex-16712640 T11 ('HAZARD', None) -> /choose move stealthrock | 0.90 ms
+  [Q] visitas=20 inicial=False valores={'STATUS': -9.687929600763649, 'HAZARD': 0.0, 'STATUS_MEC': -19.78132655364018, 'SWITCH_OFFENSIVE': -16.034952074477935, 'ATTACK_STRONG_MEC': -23.878927478129025, 'HAZARD_MEC': 0.0, 'SWITCH_DEFENSIVE': -29.601768510905092, 'ATTACK_STRONG': -12.686411829943008, 'ATTACK_TECH_MEC': -24.472971671727713, 'ATTACK_TECH': -16.111054464378633}
+[DECISAO] battle-gen9nationaldex-16712640 T11 sem escolha tabular -> /choose switch Serperior | 0.30 ms
+[DECISAO] battle-gen9nationaldex-16712640 T12 ('STATUS', None) -> /choose move glare | 0.76 ms
+  [Q] visitas=27 inicial=False valores={'SWITCH_DEFENSIVE': -11.701170623661254, 'ATTACK_STRONG': -12.336589076563511, 'STATUS': -6.790540592850087, 'SWITCH_OFFENSIVE': -7.435378444061159}
+[DECISAO] battle-gen9nationaldex-16712640 T12 sem escolha tabular -> /choose switch Komala | 0.26 ms
+[QUAR] SAIDA turno=13 tag=battle-gen9nationaldex-16712640 par=('komala','melmetal') registo={('serperior', 'greattusk'): 3, ('serperior', 'tornadustherian'): 6, ('aggron', 'tornadustherian'): 9, ('komala', 'melmetal'): 13}
+[DECISAO] battle-gen9nationaldex-16712640 T13 ('SWITCH_OFFENSIVE', None) -> /choose switch Hydreigon | 0.67 ms
+  [Q] visitas=0 inicial=True valores={'SWITCH_OFFENSIVE': 0.0, 'SWITCH_DEFENSIVE': 0.0, 'STATUS': 0.0, 'ATTACK_STRONG': 0.0}
+[DECISAO] battle-gen9nationaldex-16712640 T13 sem escolha tabular -> /choose switch Komala | 0.17 ms
+[DECISAO] battle-gen9nationaldex-16712640 T14 ('ATTACK_STRONG', None) -> /choose move lastresort | 0.70 ms
+  [Q] visitas=0 inicial=True valores={'ATTACK_STRONG': 0.0, 'STATUS': 0.0}
+[DECISAO] battle-gen9nationaldex-16712640 T15 ('ATTACK_STRONG', None) -> /choose move lastresort | 0.68 ms
+  [Q] visitas=0 inicial=True valores={'ATTACK_STRONG': 0.0}
+[FIM] 0 vitorias / 5 concluidas

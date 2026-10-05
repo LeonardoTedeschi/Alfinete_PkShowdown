@@ -1418,6 +1418,12 @@ class GamePhysics:
         pela política)."""
         move_id = move.id
 
+        # 04/10/2026: opcoes do protocolo nao sao ataques, mesmo quando
+        # a biblioteca as representa com categoria SPECIAL e potencia zero.
+        # A recarga obrigatoria e respondida diretamente pelo base_agent.
+        if move_id in ('recharge', 'fight'):
+            return MoveCategory.UNKNOWN
+
         # ==================================================================
         # O GOLPE LETAL E SEMPRE ATTACK_STRONG (04/09/2026)
         # ==================================================================
@@ -1561,7 +1567,10 @@ class GamePhysics:
                     return MoveCategory.DEBUFF
             return MoveCategory.STATUS
 
-        if move.category.name in ["PHYSICAL", "SPECIAL"] and move.base_power > 0:
+        # Potencia estatica zero nao significa ausencia de dano: Heavy Slam,
+        # Heat Crash, Grass Knot e outros resolvem a potencia durante a batalha.
+        # As categorias funcionais especificas acima continuam prioritarias.
+        if move.category.name in ["PHYSICAL", "SPECIAL"]:
             return MoveCategory.ATTACK_STRONG
 
         return MoveCategory.UNKNOWN

@@ -6,6 +6,8 @@
 *.svg
 *.ico
 *.webp
+*.csv
+
 
 # Outros arquivos grandes comuns (ajuste conforme necessário)
 *.mp4

@@ -1,0 +1,10 @@
+Ciclo: B_11
+Etiqueta: B11 - ajustes feitos e dando inicio ao teste inicial de 50k antes do treino
+Agente: Green
+Batalhas: 50000
+Estados_Q: 558746
+Maior_abs_Q: 822.2804434545723
+Saude: saudavel
+Data: 2026-10-04T16:46:43
+Brain_ativo: C:\Projetos Robotica Computacional\Projeto Showdown IA Pokemon\Bot-QV-Pokemon\artefatos\brains\green_brain.pkl
+CSV_ativo: C:\Projetos Robotica Computacional\Projeto Showdown IA Pokemon\Bot-QV-Pokemon\artefatos\logs\green_treino_consolidado.csv

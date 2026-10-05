@@ -1,0 +1,10 @@
+Ciclo: B_11
+Etiqueta: B11 - ajustes feitos e dando inicio ao teste inicial de 50k antes do treino
+Agente: Blue
+Batalhas: 50000
+Estados_Q: 555511
+Maior_abs_Q: 633.3285219063117
+Saude: saudavel
+Data: 2026-10-04T15:15:56
+Brain_ativo: C:\Projetos Robotica Computacional\Projeto Showdown IA Pokemon\Bot-QV-Pokemon\artefatos\brains\blue_brain.pkl
+CSV_ativo: C:\Projetos Robotica Computacional\Projeto Showdown IA Pokemon\Bot-QV-Pokemon\artefatos\logs\blue_treino_consolidado.csv
