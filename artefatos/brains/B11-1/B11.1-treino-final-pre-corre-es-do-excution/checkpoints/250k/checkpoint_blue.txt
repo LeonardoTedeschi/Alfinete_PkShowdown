@@ -1,0 +1,10 @@
+Ciclo: B11-1
+Etiqueta: B11.1 treino final (pre-correções do excution)
+Agente: Blue
+Batalhas: 250000
+Estados_Q: 1513679
+Maior_abs_Q: 894.3542122100613
+Saude: saudavel
+Data: 2026-10-08T22:43:40
+Brain_ativo: C:\Projetos Robotica Computacional\Projeto Showdown IA Pokemon\Bot-QV-Pokemon\artefatos\brains\blue_brain.pkl
+CSV_ativo: C:\Projetos Robotica Computacional\Projeto Showdown IA Pokemon\Bot-QV-Pokemon\artefatos\logs\blue_treino_consolidado.csv
