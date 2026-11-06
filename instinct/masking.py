@@ -24,6 +24,7 @@ feito automaticamente.
 
 from shared import diagnostico
 from shared.definitions import MoveCategory
+from shared.move_rules import last_resort_ready, sleep_talk_attack
 
 
 
@@ -325,6 +326,13 @@ class ActionMasker:
         active = battle.active_pokemon
         if not active or not opponent:
             return True
+
+        if move.id == 'lastresort' and last_resort_ready(active, battle) is False:
+            return True
+        chamado = sleep_talk_attack(move, active)
+        if chamado is not None:
+            # So para avaliar utilidade: o executor devolve o Sleep Talk original.
+            move = chamado
 
         # 0. IMUNIDADE DE TIPO ABSOLUTA (multiplicador 0)
         #

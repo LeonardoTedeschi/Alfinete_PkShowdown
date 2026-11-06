@@ -90,7 +90,9 @@ _MAX_BATALHAS_REGISTADAS = 4096
 
 
 def _tag(battle):
-    return getattr(battle, "battle_tag", None) or id(battle)
+    # Dois agentes do mesmo processo veem o mesmo battle_tag em lados opostos.
+    return (getattr(battle, "battle_tag", None) or id(battle),
+            getattr(battle, "player_role", None) or id(battle))
 
 
 def ja_usou(battle, tipo):
@@ -153,6 +155,23 @@ def z_move_valido(obj, battle):
     if not active or getattr(active, "fainted", False):
         return False
 
+    # O request e a fonte autoritativa por SLOT (inclui cristais exclusivos).
+    request = getattr(battle, 'last_request', None) or {}
+    active_requests = request.get('active') or []
+    if active_requests and 'canZMove' in active_requests[0]:
+        req = active_requests[0]
+        slots = req.get('canZMove') or []
+        if isinstance(slots, list):
+            obj_id = getattr(obj, 'id', None)
+            for index, entry in enumerate(req.get('moves', [])):
+                slot_id = entry.get('id')
+                # O request usa hiddenpower; o objeto pode expor hiddenpowerfire.
+                if (slot_id == obj_id or (slot_id == 'hiddenpower'
+                                         and str(obj_id).startswith('hiddenpower'))):
+                    return index < len(slots) and bool(slots[index])
+            return False
+        return False
+
     # 1. Lista oficial do poke-env, quando a versao instalada a expoe.
     lista = getattr(active, "available_z_moves", None)
     if lista:
@@ -172,3 +191,18 @@ def z_move_valido(obj, battle):
 def e_golpe(obj):
     """Distingue um Move de um Pokemon (trocas nunca usam mecanica)."""
     return hasattr(obj, "id") and hasattr(obj, "base_power")
+
+
+def mecanica_para_movimento(obj, battle):
+    """Mesma prioridade na oferta, selecao concreta e serializacao da ordem."""
+    if not e_golpe(obj):
+        return None
+    if getattr(battle, 'can_tera', False):
+        return 'tera'
+    if mega_valido(battle):
+        return 'mega'
+    if z_move_valido(obj, battle):
+        return 'z'
+    if getattr(battle, 'can_dynamax', False):
+        return 'dynamax'
+    return None

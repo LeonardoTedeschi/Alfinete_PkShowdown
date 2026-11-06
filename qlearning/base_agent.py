@@ -32,7 +32,7 @@ from instinct import build_instinct
 from instinct.execution import IntencaoInexecutavelError
 from qlearning.brain import BlueBrain
 
-from shared.mechanics import marcar_uso, mega_valido, z_move_valido
+from shared.mechanics import marcar_uso, mecanica_para_movimento
 
 
 
@@ -91,6 +91,7 @@ class TabularAgent(Player):
         if tag not in self._history:
             self._history[tag] = {
                 'state': None, 'last_action': None, 'prev_action': None,
+                'transition_pending': False,
                 'last_was_exploratory': False, 'buffs_consecutivos': 0,
                 # Chaves de 04/09/2026: ver o bloco de paridade no `choose_move`.
                 'wish_turno': None, 'diferido_turno': None,
@@ -170,7 +171,7 @@ class TabularAgent(Player):
                 # bootstrapping da transicao mais informativa da batalha.
                 #
                 # A recompensa TERMINAL nao se perde: e aplicada por
-                # `_aplicar_update_terminal`, chamado do `_battle_finished_callback`.
+                # `_aplicar_update_terminal`, chamado pela varredura de batalhas terminadas ao fechar o bloco.
                 switch = self.executor.get_post_faint_switch(battle)
                 return self.create_order(switch) if switch else self.choose_random_move(battle)
 
@@ -180,7 +181,7 @@ class TabularAgent(Player):
             # intencao tatica e nao deve chegar a mascara/cerebro/executor.
             # create_order serializa esse objeto como /choose move 1.
             # Preserva a ultima decisao e adia seu feedback ate a proxima
-            # decisao real (ou callback terminal), como nas trocas forcadas.
+            # decisao real (ou processamento terminal), como nas trocas forcadas.
             # A disponibilidade explicita prevalece sobre flags de efeito.
             movimentos = battle.available_moves
             if (len(movimentos) == 1
@@ -218,8 +219,10 @@ class TabularAgent(Player):
 
             # So consumir a transicao quando houver uma nova decisao possivel.
             self._learn_from_previous(battle, hist, current_state=state)
-            hist['state'] = None
-            hist['last_action'] = None
+            # Consumir feedback NAO apaga a memoria usada pelo executor.
+            # Na avaliacao, _learn_from_previous e um no-op; ainda assim fecha
+            # a pendencia anterior antes de tentar construir a nova ordem.
+            hist['transition_pending'] = False
 
             action_tuple = self.brain.decide_action(state, valid_actions, ranking_list)
             intencao_escolhida = True
@@ -248,12 +251,16 @@ class TabularAgent(Player):
             # por isso o default do parametro e True: nenhum outro chamador muda.
             obj = self.executor.get_best_execution_object(
                 base_action, battle, hist, atalho_de_pivo=False,
-                obediencia_estrita=True)
+                obediencia_estrita=True, usar_mecanica=(mechanic == "ACTIVATE"))
             # 03/10/2026: None nao pode cair em choose_random_move e depois
             # atribuir a recompensa aleatoria a action_tuple. Falha explicita.
             if obj is None:
                 raise IntencaoInexecutavelError(
                     f"Executor devolveu None para {base_action}")
+
+            # So registra uma nova transicao depois de construir a ordem inteira.
+            order = (self._order_with_mechanic(obj, battle)
+                     if mechanic == "ACTIVATE" else self.create_order(obj))
 
             self._decision_time_sum += (time.perf_counter() - _t_dec)
             self._decision_count += 1
@@ -280,6 +287,7 @@ class TabularAgent(Player):
             hist['prev_action'] = hist.get('last_action')
             hist['state'] = state
             hist['last_action'] = action_tuple
+            hist['transition_pending'] = True
             hist['last_was_exploratory'] = foi_exploratoria
             # Contador para a regra da corrida de buffs (ver instinct/policy.py).
             if str(base_action).replace("_MEC", "") == "BUFF":
@@ -373,16 +381,11 @@ class TabularAgent(Player):
             else:
                 hist['weather_active_prev'] = False
 
-            # obj foi validado antes de gravar a intencao no historico.
-            if mechanic == "ACTIVATE":
-                return self._order_with_mechanic(obj, battle)
-            return self.create_order(obj)
+            return order
 
         except IntencaoInexecutavelError:
             if intencao_escolhida:
-                hist['state'] = None
-                hist['last_action'] = None
-                hist['last_was_exploratory'] = False
+                hist['transition_pending'] = False
             self._log_choose_error()
             raise
         except Exception:
@@ -390,9 +393,7 @@ class TabularAgent(Player):
                 # 03/10/2026: o except amplo tambem contornava a obediencia.
                 # A transicao anterior ja foi processada; nao deixar uma acao
                 # nao executada (ou a anterior) receber credito no proximo turno.
-                hist['state'] = None
-                hist['last_action'] = None
-                hist['last_was_exploratory'] = False
+                hist['transition_pending'] = False
                 self._log_choose_error()
                 raise
             # DIAGNÓSTICO: imprime o erro real UMA vez por tipo, para não spammar o log
@@ -425,7 +426,8 @@ class TabularAgent(Player):
         hist = self._history.get(tag)
         if not hist:
             return
-        if hist.get('state') is None or hist.get('last_action') is None:
+        if (not hist.get('transition_pending', False)
+                or hist.get('state') is None or hist.get('last_action') is None):
             return
         try:
             # Estado terminal convencional do cerebro: Q futuro = 0 e Phi = 0,
@@ -463,7 +465,7 @@ class TabularAgent(Player):
                 pass
 
             # Impede que a mesma transicao seja reaplicada se algo voltar aqui.
-            hist['last_action'] = None
+            hist['transition_pending'] = False
         except Exception:
             self._log_choose_error()
 
@@ -589,7 +591,8 @@ class TabularAgent(Player):
                 "reward_batalha": reward_batalha}
 
     def _learn_from_previous(self, battle, hist, current_state):
-        if hist.get('state') is not None and hist.get('last_action') is not None:
+        if (hist.get('transition_pending', False)
+                and hist.get('state') is not None and hist.get('last_action') is not None):
             reward = self.brain.calculate_reward(battle, hist, current_state)
             # battle_key: os eligibility traces sao POR BATALHA (ha 3 concorrentes).
             # was_exploratory: lida do cerebro logo apos decide_action, para o corte
@@ -598,6 +601,7 @@ class TabularAgent(Player):
                 current_state, hist['state'], hist['last_action'], reward,
                 battle_key=battle.battle_tag,
                 was_exploratory=hist.get('last_was_exploratory', False))
+            hist['transition_pending'] = False
             # Acumula a recompensa real do turno para a metrica do bloco.
             try:
                 self._reward_sum += float(reward)
@@ -629,83 +633,37 @@ class TabularAgent(Player):
     # disponível. Mitigado pela HERANÇA _MEC em brain.decide_action, onde a variante
     # _MEC arranca com o valor já aprendido pela ação base em vez de zero.
     #
-    # A fragilidade original do Z-move continua tratada: o _order_with_mechanic
-    # verifica golpe a golpe se existe versão Z e, na dúvida, joga sem mecânica.
+    # A disponibilidade e validada antes do cerebro e reaplicada no executor.
+    # Uma escolha _MEC nunca e convertida silenciosamente numa ordem comum.
     ENABLE_MECHANICS = True
 
     def _expand_with_mechanic(self, categories, battle):
-        """Filtra as categorias para o espaço de ações do cérebro.
-
-        Com ENABLE_MECHANICS=False, NUNCA adiciona variantes _MEC — o cérebro não
-        vê a mecânica, logo não pode escolher uma jogada que o servidor rejeitaria.
-        """
+        """Uma variante _MEC exige realizacao concreta da mesma intencao."""
         valid = []
         for cat in categories:
-            if cat in self.brain.actions and cat not in valid:
+            if cat not in self.brain.actions:
+                continue
+            if cat not in valid:
                 valid.append(cat)
-            if self.ENABLE_MECHANICS:
-                mec_avail = (self.instinct.parser.get_mechanic_state(battle) == "MEC_AVAIL")
-                if mec_avail and "SWITCH" not in cat:
-                    mec = f"{cat}_MEC"
-                    if mec in self.brain.actions and mec not in valid:
-                        valid.append(mec)
+            mec = f"{cat}_MEC"
+            if (self.ENABLE_MECHANICS and mec in self.brain.actions
+                    and self.executor.candidatos_da_intencao(cat, battle, usar_mecanica=True)
+                    and mec not in valid):
+                valid.append(mec)
         return valid
 
     def _order_with_mechanic(self, obj, battle):
-        """Ativa uma mecânica APENAS se o golpe concreto a suporta.
-
-        Não basta a mecânica estar disponível na batalha (battle.can_z_move etc.): o
-        golpe específico tem de ser compatível. Ex.: Landorus pode ter Z-move
-        disponível, mas Swords Dance só é Z-válido se o item Z for do tipo certo — o
-        servidor rejeita "Can't use X as a Z-move". Verificamos golpe a golpe e, se a
-        mecânica não servir para este golpe, jogamo-lo normalmente (sem mecânica).
-
-        A verificação de compatibilidade usa as listas que o poke-env fornece por
-        mecânica quando disponíveis; se a lista não existir, cai no comportamento
-        seguro (jogar sem mecânica) em vez de arriscar uma ordem inválida.
-        """
-        # Só faz sentido para objetos que são Move (trocas não usam mecânica).
-        is_move = hasattr(obj, "id") and hasattr(obj, "base_power")
-        if not is_move:
-            return self.create_order(obj)
-
-        def move_in(list_name):
-            lst = getattr(battle, list_name, None)
-            if not lst:
-                return False
-            try:
-                return obj in lst or any(getattr(m, "id", None) == obj.id for m in lst)
-            except TypeError:
-                return False
-
-        try:
-            # Terastallize: aplica-se a qualquer golpe quando disponível.
-            if getattr(battle, "can_tera", False):
-                return self.create_order(obj, terastallize=True)
-
-            # Mega evolução: propriedade do Pokémon, não do golpe — disponível = ok.
-            if mega_valido(battle):
-                # marcar ANTES de devolver: desde poke-env 0.12.0 o item permanece
-                # depois do uso, logo deixou de servir de guarda de uso unico.
-                marcar_uso(battle, "mega")
-                return self.create_order(obj, mega=True)
-
-            # Z-move: SÓ se este Pokémon carregar o cristal do tipo certo.
-            # CORRIGIDO 24/08/2026: usava obj.can_z_move, que é propriedade do golpe
-            # nos dados e não da situação. Produzia "[Invalid choice]" e custava o
-            # turno. Ver z_move_valido no topo do ficheiro.
-            if z_move_valido(obj, battle):
-                marcar_uso(battle, "z")
-                return self.create_order(obj, z_move=True)
-
-            # Dynamax: aplica-se a qualquer golpe quando disponível.
-            if getattr(battle, "can_dynamax", False):
-                return self.create_order(obj, dynamax=True)
-        except Exception:
-            pass
-
-        # Fallback seguro: joga o golpe sem mecânica.
-        return self.create_order(obj)
+        """Nao converte uma escolha _MEC em uma ordem comum silenciosamente."""
+        tipo = mecanica_para_movimento(obj, battle)
+        if tipo is None:
+            raise IntencaoInexecutavelError(
+                f"Mecanica escolhida sem realizacao para {getattr(obj, 'id', obj)}")
+        flag = {'tera': 'terastallize', 'mega': 'mega',
+                'z': 'z_move', 'dynamax': 'dynamax'}[tipo]
+        order = self.create_order(obj, **{flag: True})
+        if tipo in ('mega', 'z'):
+            marcar_uso(battle, tipo)
+        return order
 
     # ------------------------------------------------------------------
     # persistência

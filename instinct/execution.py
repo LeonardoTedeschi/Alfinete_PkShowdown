@@ -22,6 +22,8 @@ DEPENDÊNCIAS (por injeção): GamePhysics, StateParser, ActionMasker.
 
 from shared import diagnostico
 from shared.definitions import Role, MatchupState, MoveCategory
+from shared.mechanics import mecanica_para_movimento
+from shared.move_rules import MovePoolBattle, last_resort_ready
 
 
 class IntencaoInexecutavelError(RuntimeError):
@@ -809,9 +811,29 @@ class InstinctExecutor:
     # PONTO DE ENTRADA: intenção -> objeto concreto
     # ======================================================================
 
+    def candidatos_da_intencao(self, base_action, battle, usar_mecanica=False):
+        """Contrato compartilhado com a oferta de acoes _MEC ao cerebro."""
+        if base_action.startswith('SWITCH'):
+            return [] if usar_mecanica else list(battle.available_switches)
+        cats = {base_action}
+        if base_action in ('ATTACK_STRONG', 'ATTACK_PREDICTIVE'):
+            cats = {'ATTACK_STRONG', 'ATTACK_TECH', 'ATTACK_PIVOT'}
+        # Testar compatibilidade antes da classificacao evita calcular dano
+        # repetidamente nos turnos sem nenhuma mecanica disponivel.
+        return [m for m in battle.available_moves
+                if (not usar_mecanica or mecanica_para_movimento(m, battle) is not None)
+                and self.physics.classify_move(m, battle.opponent_active_pokemon, battle).name in cats]
+
     def get_best_execution_object(self, base_action, battle, history=None,
                                   fallback_obediencia=True, comparar_ataques=False,
-                                  atalho_de_pivo=True, obediencia_estrita=False):
+                                  atalho_de_pivo=True, obediencia_estrita=False,
+                                  usar_mecanica=False):
+        if usar_mecanica:
+            candidates = self.candidatos_da_intencao(base_action, battle, usar_mecanica=True)
+            if not candidates:
+                raise IntencaoInexecutavelError(f"Sem realizacao mecanica para {base_action}")
+            # Todo caminho de selecao recebe o mesmo subconjunto compativel.
+            battle = MovePoolBattle(battle, candidates)
         # 03/10/2026: contrato explicito para Blue/Green. O default preserva o
         # InstinctBot. Writer: TabularAgent passa True; reader: guardas abaixo.
         # Filtrar/desempatar DENTRO da intencao permanece permitido. Trocar a
@@ -1036,6 +1058,12 @@ class InstinctExecutor:
         # BLOCO DE ATAQUE
         if base_action in ["ATTACK_STRONG", "ATTACK_PREDICTIVE", "ATTACK_PIVOT", "ATTACK_TECH"]:
             valid_moves = [m for m in battle.available_moves if self.physics.classify_move(m, opponent, battle) in [MoveCategory.ATTACK_STRONG, MoveCategory.ATTACK_TECH, MoveCategory.ATTACK_PIVOT]]
+            realizaveis = [m for m in valid_moves if not (
+                m.id == 'lastresort' and last_resort_ready(active, battle) is False)]
+            if realizaveis:
+                valid_moves = realizaveis
+            # Se so restar Last Resort, continua sendo uma opcao do cerebro.
+            # Nao troca a intencao nem inventa outra acao para evitar uma falha.
             useful_moves = [m for m in valid_moves if not self.masker.is_move_useless(m, opponent, battle, history)]
             if useful_moves:
                 valid_moves = useful_moves
@@ -1296,6 +1324,17 @@ class InstinctExecutor:
                     return strong_move
 
                 if base_action == "ATTACK_PREDICTIVE":
+                    pred_diag = None
+                    if history is not None and history.get('_diagnostico_previsao'):
+                        pred_diag = {
+                            'criterio': 'media_dano_banco_mais_cobertura; sem alvo unico previsto',
+                            'strong_alternativo': strong_move.id,
+                            'escolhido': strong_move.id,
+                            'banco': [getattr(b, 'species', None) for b in benched_opponents],
+                            'danos_por_movimento': {}, 'scores_candidatos': {},
+                            'fallback_strong': True,
+                        }
+                        history['previsao_detalhes'] = pred_diag
                     # BANCO VAZIO: o adversario esta no ultimo Pokemon, nao ha
                     # troca para prever, e o preditivo degenera no `strong_move`
                     # mascarado. Nesse estado ATTACK_PREDICTIVE e ATTACK_STRONG
@@ -1347,6 +1386,8 @@ class InstinctExecutor:
 
                             matriz = {m.id: [_dano_no_banco(m, b) for b in benched_opponents]
                                       for m in all_offensive_moves}
+                            if pred_diag is not None:
+                                pred_diag['danos_por_movimento'] = matriz
 
                             # Para cada alvo do banco, qual golpe MAXIMIZA o dano.
                             # Calculado sobre o repertorio INTEIRO, `strong_move`
@@ -1378,10 +1419,15 @@ class InstinctExecutor:
                                     score += 0.20
                                 if getattr(m, 'secondary', None):
                                     score += 0.05
+                                if pred_diag is not None:
+                                    pred_diag['scores_candidatos'][m.id] = score
                                 if score > max_pred_score:
                                     max_pred_score = score
                                     best_pred_move = m
                             if best_pred_move:
+                                if pred_diag is not None:
+                                    pred_diag['escolhido'] = best_pred_move.id
+                                    pred_diag['fallback_strong'] = False
                                 return best_pred_move
                     return strong_move
 

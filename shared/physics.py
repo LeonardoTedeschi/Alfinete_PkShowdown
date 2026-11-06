@@ -18,6 +18,7 @@ Reutilização na pesquisa:
 """
 
 from shared.definitions import Role, MoveCategory
+from shared.move_rules import last_resort_ready, sleep_talk_attack
 
 
 class GamePhysics:
@@ -563,6 +564,13 @@ class GamePhysics:
         """Estima o dano de um golpe como fração do HP máximo do defensor.
         Considera STAB, tipos, itens, habilidades, clima, terreno, barreiras e
         golpes de carga. Retorna 0.0 para golpes de status."""
+        chamado = sleep_talk_attack(move, attacker)
+        if chamado is not None:
+            # Estima o resultado chamado, mas a ordem continua sendo Sleep Talk.
+            move = chamado
+        elif (move.id == 'lastresort'
+              and last_resort_ready(attacker, battle) is False):
+            return 0.0
         if move.category.name == "STATUS" or move.base_power == 0:
             return 0.0
 
@@ -1417,6 +1425,8 @@ class GamePhysics:
         """Mapeia um golpe para a sua categoria funcional (usada pelo masking e
         pela política)."""
         move_id = move.id
+        if sleep_talk_attack(move, getattr(battle, 'active_pokemon', None)) is not None:
+            return MoveCategory.ATTACK_STRONG
 
         # 04/10/2026: opcoes do protocolo nao sao ataques, mesmo quando
         # a biblioteca as representa com categoria SPECIAL e potencia zero.

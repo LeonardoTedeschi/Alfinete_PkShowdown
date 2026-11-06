@@ -46,9 +46,13 @@ def label(obj):
 def pokemon(mon):
     if mon is None:
         return None
-    return {k: getattr(mon, k, None) for k in
+    result = {k: getattr(mon, k, None) for k in
             ('species', 'current_hp_fraction', 'fainted', 'status', 'boosts',
              'effects', 'ability', 'item', 'types')}
+    result['moveset_conhecido'] = {
+        key: {'pp': getattr(m, 'current_pp', None)}
+        for key, m in (getattr(mon, 'moves', {}) or {}).items()}
+    return result
 
 
 def snapshot(b):
@@ -112,6 +116,25 @@ class Tee:
 
 
 class DiagnosticMixin:
+    def _fechar_previsao(self, battle):
+        from shared.move_rules import protocol_events
+        pendentes = getattr(self, '_previsoes_pendentes', {})
+        pending = pendentes.get(battle.battle_tag)
+        if not pending or (battle.turn <= pending['turno'] and not battle.finished):
+            return
+        pendentes.pop(battle.battle_tag)
+        events = protocol_events(battle)
+        observed = (events[pending['inicio_eventos']:]
+                    if events is not None and pending['inicio_eventos'] is not None else None)
+        # Eventos inteiros preservam ordem: troca voluntaria, ataque, dano,
+        # imunidade, flinch, miss, troca forcada etc. HP agregado nao e dano do golpe.
+        self.rec.emit('resultado_previsao', id_previsao=pending['id'],
+                      batalha=battle.battle_tag, turno_decisao=pending['turno'],
+                      turno_observacao=battle.turn, eventos=observed,
+                      snapshot_depois=snapshot(battle), terminou=battle.finished,
+                      acerto_previsao=None,
+                      nota='Sem alvo unico/probabilidade no executor; nao inferir acerto pelo HP ou pela especie final.')
+
     """Instrumenta o comportamento existente; nao corrige silenciosamente a politica."""
     def _learn_from_previous(self, *args, **kwargs):
         # Avaliacao: nenhuma atualizacao de reward, traces, replay ou Q.
@@ -145,12 +168,36 @@ class DiagnosticMixin:
         return order
 
     def choose_move(self, battle):
+        from shared.move_rules import protocol_events, last_resort_ready
+        self._fechar_previsao(battle)
         t = time.perf_counter()
+        hist = self._get_history(battle)
+        hist['_diagnostico_previsao'] = True
+        hist.pop('previsao_detalhes', None)
+        events = protocol_events(battle)
+        inicio_eventos = len(events) if events is not None else None
         self._trace = dict(snapshot=snapshot(battle), filtros=[], execucoes=[],
                            historico_entrada=dict(getattr(self, '_history', {}).get(battle.battle_tag, {})))
         try:
             order = super().choose_move(battle)
             self._trace['ordem'] = getattr(order, 'message', str(order))
+            self._trace['last_resort_pronto'] = last_resort_ready(battle.active_pokemon, battle)
+            prediction = hist.get('previsao_detalhes')
+            if prediction is not None:
+                if not hasattr(self, '_previsoes_pendentes'):
+                    self._previsoes_pendentes = {}
+                self._numero_previsao = getattr(self, '_numero_previsao', 0) + 1
+                ident = f'{battle.battle_tag}:{battle.turn}:{self._numero_previsao}'
+                old = self._previsoes_pendentes.get(battle.battle_tag)
+                if old:
+                    self.rec.emit('previsao_substituida', id_previsao=old['id'],
+                                  nova_previsao=ident, motivo='nova decisao antes do fim do turno')
+                self._previsoes_pendentes[battle.battle_tag] = {
+                    'id': ident, 'turno': battle.turn, 'inicio_eventos': inicio_eventos}
+                self._trace['id_previsao'] = ident
+                self.rec.emit('previsao', id_previsao=ident, batalha=battle.battle_tag,
+                              turno=battle.turn, detalhes=prediction,
+                              ordem=self._trace['ordem'], snapshot_antes=self._trace['snapshot'])
             return order
         except Exception:
             self._trace['erro'] = traceback.format_exc()
@@ -170,6 +217,7 @@ class DiagnosticMixin:
             self._trace = None
 
     def _battle_finished_callback(self, battle):
+        self._fechar_previsao(battle)
         super()._battle_finished_callback(battle)
         self.rec.emit('fim_batalha', snapshot=snapshot(battle), venceu=battle.won,
                       perdeu=battle.lost)
@@ -294,7 +342,8 @@ async def run(args, rec, folder):
     sources = {}
     for relative in ['qlearning/base_agent.py', 'qlearning/brain.py', 'qlearning/hybrid_agent.py',
                      'qlearning/pure_agent.py', 'instinct/execution.py', 'shared/physics.py',
-                     'instinct/masking.py', 'instinct/policy.py']:
+                     'instinct/masking.py', 'instinct/policy.py',
+                     'shared/mechanics.py', 'shared/move_rules.py']:
         path = ROOT / relative
         if path.is_file(): sources[relative] = digest(path)
     rec.emit('configuracao', agente=args.agente, bot=args.bot, humano=args.humano,
